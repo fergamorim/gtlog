@@ -101,12 +101,20 @@ export function filtersSearch(filters: LogFilters): string {
 }
 
 /**
- * Turns a grouped error message ("timeout calling auth after #ms") into a full-text query:
- * tokens containing the `#` placeholder are dropped because they never match literally.
+ * Turns a grouped error message into a phrase query for the backend (quoted = websearch phrase match).
+ * Tokens with the `#` placeholder never match literally, so they split the message into separate
+ * quoted phrases, ANDed by the backend: "payment # declined" -> `"payment" "declined"`,
+ * "timeout calling auth after #ms" -> `"timeout calling auth after"`. Existing quotes are stripped.
  */
 export function messageToQuery(message: string): string {
-  return message
-    .split(/\s+/)
-    .filter((token) => token && !token.includes('#'))
+  const phrases: string[][] = [[]]
+  for (const token of message.replace(/"/g, ' ').split(/\s+/)) {
+    if (!token) continue
+    if (token.includes('#')) phrases.push([])
+    else phrases[phrases.length - 1].push(token)
+  }
+  return phrases
+    .filter((words) => words.length)
+    .map((words) => `"${words.join(' ')}"`)
     .join(' ')
 }

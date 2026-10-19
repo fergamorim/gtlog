@@ -34,7 +34,8 @@ export function SearchInput({ value, onChange, delay = 300 }: SearchInputProps) 
           id="log-search"
           className="input"
           type="search"
-          placeholder="Buscar na mensagem ou serviço…"
+          placeholder="Buscar na mensagem ou serviço (ex.: pay, timeout)"
+          title="Prefixos funcionam (pay encontra payments). Use aspas para buscar uma frase exata."
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

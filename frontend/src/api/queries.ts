@@ -9,7 +9,7 @@ import {
 import { useEffect, useMemo, useRef } from 'react'
 import { toParams, type FilterKey, type LogFilters } from '../lib/filters'
 import { api } from './client'
-import type { ImportJob, LogEntry, LogPage } from './types'
+import type { ImportJob, ImportStatus, LogEntry, LogPage } from './types'
 
 export const LOGS_PAGE_SIZE = 200
 
@@ -18,12 +18,14 @@ export const queryKeys = {
   imports: ['imports'] as const,
   importJob: (id: number) => ['imports', id] as const,
   logs: (params: string) => ['logs', params] as const,
+  logCount: (params: string) => ['logCount', params] as const,
   log: (id: number) => ['log', id] as const,
   facets: ['facets'] as const,
   stats: (params: string) => ['stats', params] as const,
 }
 
-export const isJobFinished = (job?: ImportJob) => job?.status === 'DONE' || job?.status === 'FAILED'
+const isStatusFinished = (status: ImportStatus) => status === 'DONE' || status === 'FAILED'
+export const isJobFinished = (job?: ImportJob) => job != null && isStatusFinished(job.status)
 
 export function useApiHealth() {
   return useQuery({
@@ -49,6 +51,7 @@ export function useImports() {
 function refreshAfterImport(client: QueryClient) {
   // Reset (not invalidate) logs: refetching every loaded page of an infinite list would be wasteful.
   client.resetQueries({ queryKey: ['logs'] })
+  client.invalidateQueries({ queryKey: ['logCount'] })
   client.invalidateQueries({ queryKey: ['stats'] })
   client.invalidateQueries({ queryKey: queryKeys.facets })
   client.invalidateQueries({ queryKey: queryKeys.imports, exact: true })
@@ -65,14 +68,34 @@ export function useImportJob(id: number | null) {
     refetchIntervalInBackground: true,
   })
 
-  const status = query.data?.status
-  const previous = useRef(status)
+  // Mirror the polled job into the list so the global watcher sees the transition without waiting for its own poll.
+  const job = query.data
   useEffect(() => {
-    if (previous.current && previous.current !== status && isJobFinished(query.data)) refreshAfterImport(client)
-    previous.current = status
-  }, [status, query.data, client])
+    if (!job) return
+    client.setQueryData<ImportJob[]>(queryKeys.imports, (list) => list?.map((j) => (j.id === job.id ? job : j)))
+  }, [job, client])
 
   return query
+}
+
+/**
+ * Mounted once in App: watches the imports list (which polls while any job runs) and refreshes
+ * logs, counts, stats and facets when a job finishes, whatever page the user is on.
+ */
+export function useImportCompletionWatcher() {
+  const client = useQueryClient()
+  const { data } = useImports()
+  const previous = useRef(new Map<number, ImportStatus>())
+
+  useEffect(() => {
+    if (!data) return
+    const finished = data.some((job) => {
+      const before = previous.current.get(job.id)
+      return before !== undefined && !isStatusFinished(before) && isStatusFinished(job.status)
+    })
+    previous.current = new Map(data.map((job) => [job.id, job.status]))
+    if (finished) refreshAfterImport(client)
+  }, [data, client])
 }
 
 export function useUploadImport() {
@@ -105,6 +128,17 @@ export function useLogs(filters: LogFilters) {
     // Refetching hundreds of loaded pages on focus would be expensive; logs are immutable once imported.
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
+  })
+}
+
+/** Total matching the filters (GET /logs/count), shown next to the loaded-rows counter. */
+export function useLogCount(filters: LogFilters) {
+  const params = useFilterParams(filters)
+  return useQuery({
+    queryKey: queryKeys.logCount(params),
+    queryFn: ({ signal }) => api.countLogs(new URLSearchParams(params), signal),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
   })
 }
 

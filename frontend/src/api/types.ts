@@ -35,6 +35,10 @@ export interface LogPage {
   next_cursor: string | null
 }
 
+export interface LogCount {
+  total: number
+}
+
 export interface Facets {
   services: string[]
   categories: string[]

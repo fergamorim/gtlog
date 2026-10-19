@@ -1,4 +1,4 @@
-import type { Facets, ImportJob, LogEntry, LogPage, Stats } from './types'
+import type { Facets, ImportJob, LogCount, LogEntry, LogPage, Stats } from './types'
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
@@ -76,6 +76,7 @@ export const api = {
     if (cursor) params.set('cursor', cursor)
     return request<LogPage>(withQuery('/logs', params), { signal })
   },
+  countLogs: (filters: URLSearchParams, signal?: AbortSignal) => request<LogCount>(withQuery('/logs/count', filters), { signal }),
   getLog: (id: number, signal?: AbortSignal) => request<LogEntry>(`/logs/${id}`, { signal }),
   getFacets: (signal?: AbortSignal) => request<Facets>('/logs/facets', { signal }),
   getStats: (filters: URLSearchParams, signal?: AbortSignal) => request<Stats>(withQuery('/stats', filters), { signal }),

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useFilterParams, useLogs, useStats } from '../api/queries'
+import { useFilterParams, useLogCount, useLogs } from '../api/queries'
 import { FilterBar } from '../components/filters/FilterBar'
 import { LogDetailDrawer } from '../components/logs/LogDetailDrawer'
 import { LogsSkeleton } from '../components/logs/LogsSkeleton'
@@ -45,10 +45,8 @@ export function LogsPage() {
     fetchNextPage()
   }, [fetchNextPage])
 
-  const applyFilter = (patch: Partial<LogFilters>) => {
-    setSelected(null)
-    setFilters(patch)
-  }
+  // One URL update: changes the filters and closes the drawer.
+  const applyFilter = (patch: Partial<LogFilters>) => setFilters(patch, { drop: ['log'] })
 
   const activeFilters = countActiveFilters(filters)
   const stale = logs.isPlaceholderData
@@ -120,17 +118,17 @@ export function LogsPage() {
   )
 }
 
-/** "1.234 registros · 200 carregados". The total comes from /stats (same filters) and is optional. */
+/** "1.234 registros · 200 carregados". The total comes from GET /logs/count (same filters) and is optional. */
 function ResultSummary({ filters, loaded, hasMore }: { filters: LogFilters; loaded: number; hasMore: boolean }) {
-  const stats = useStats(filters)
-  const total = stats.isPlaceholderData ? undefined : stats.data?.total
+  const count = useLogCount(filters)
+  const total = count.isPlaceholderData ? undefined : count.data?.total
 
   return (
     <div className="logs__summary" aria-live="polite">
       <span>
         {total != null ? (
           <><strong>{formatNumber(total)}</strong> {total === 1 ? 'registro' : 'registros'}</>
-        ) : stats.isError ? (
+        ) : count.isError ? (
           <>Total indisponível</>
         ) : (
           <>Calculando total…</>

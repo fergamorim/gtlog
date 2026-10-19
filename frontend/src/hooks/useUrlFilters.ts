@@ -10,9 +10,20 @@ export function useUrlFilters() {
   const [params, setParams] = useSearchParams()
   const filters = useMemo(() => parseFilters(params), [params])
 
+  /**
+   * Applies `patch` in a single URL update. `drop` removes non-filter params in the same update
+   * (e.g. `log` to close the drawer): two setSearchParams calls in one tick would see the same stale params.
+   */
   const setFilters = useCallback(
-    (patch: Partial<LogFilters>) => {
-      setParams((prev) => writeFilters(prev, { ...parseFilters(prev), ...patch }), { replace: true })
+    (patch: Partial<LogFilters>, options?: { drop?: string[] }) => {
+      setParams(
+        (prev) => {
+          const next = writeFilters(prev, { ...parseFilters(prev), ...patch })
+          options?.drop?.forEach((key) => next.delete(key))
+          return next
+        },
+        { replace: true },
+      )
     },
     [setParams],
   )

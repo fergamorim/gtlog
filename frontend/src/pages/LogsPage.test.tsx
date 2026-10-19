@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { LogEntry } from '../api/types'
-import { EMPTY_STATS, json, mockFetch, renderWithProviders } from '../test/utils'
+import { json, mockFetch, renderWithProviders } from '../test/utils'
 import { LogsPage } from './LogsPage'
 
 const ENTRY: LogEntry = {
@@ -24,8 +24,8 @@ function api(logs: (url: URL) => Response) {
         return json({ services: ['auth', 'payments'], categories: ['timeout'] })
       case '/imports':
         return json([])
-      case '/stats':
-        return json(EMPTY_STATS)
+      case '/logs/count':
+        return json({ total: 1 })
       case '/logs':
         return logs(url)
       default:
@@ -71,6 +71,30 @@ describe('LogsPage', () => {
     expect(await screen.findByText(/Fim dos resultados/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'Registros de log' })).toBeInTheDocument()
+  })
+
+  it('shows the total from /logs/count with the same filters', async () => {
+    const fetch = api(() => json({ items: [ENTRY], next_cursor: null }))
+    renderWithProviders(<LogsPage />, { route: '/logs?level=ERROR&q=pay' })
+
+    const summary = await screen.findByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '1 registro')
+    expect(summary).toBeInTheDocument()
+    const countCall = fetch.mock.calls.map(([input]) => new URL(String(input))).find((u) => u.pathname === '/logs/count')
+    expect(countCall?.searchParams.getAll('level')).toEqual(['ERROR'])
+    expect(countCall?.searchParams.get('q')).toBe('pay')
+    expect(countCall?.searchParams.has('limit')).toBe(false)
+  })
+
+  it('closes the drawer and applies the filter in one URL update', async () => {
+    const fetch = api(() => json({ items: [ENTRY], next_cursor: null }))
+    renderWithProviders(<LogsPage />, { route: '/logs?log=1' })
+
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(await within(dialog).findByRole('button', { name: /Só nível ERROR/ }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const calls = fetch.mock.calls.map(([input]) => new URL(String(input))).filter((u) => u.pathname === '/logs')
+    expect(calls[calls.length - 1].searchParams.getAll('level')).toEqual(['ERROR'])
   })
 
   it('reports a network failure in Portuguese', async () => {

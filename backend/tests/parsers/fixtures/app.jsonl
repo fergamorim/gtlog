@@ -1,0 +1,6 @@
+{"timestamp": "2026-10-05T14:03:22.418529+00:00", "level": "INFO", "service": "auth", "message": "user user42 logged in"}
+{"timestamp": "2026-10-05T14:03:22.950113+00:00", "level": "ERROR", "service": "payments", "message": "payment 9c2e1f declined"}
+{"@timestamp": "2026-10-05T11:03:23.000-03:00", "severity": "warn", "logger": "catalog.repo", "msg": "slow query took 2304ms"}
+{"time": 1791209003, "level": "crit", "app": "player", "message": "disk usage above 95% on node-3"}
+@@ corrupted line without structure @@
+{"timestamp": "2026-10-05T14:03:26Z", "service": {"name": "search"}, "message": "index rebuilt"}

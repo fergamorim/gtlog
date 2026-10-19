@@ -1,0 +1,4 @@
+203.0.113.7 - - [05/Oct/2026:11:03:22 -0300] "GET /api/catalog?page=2 HTTP/1.1" 200 5123 "https://gtlog.example/" "Mozilla/5.0 (X11; Linux x86_64)"
+198.51.100.23 - frank [05/Oct/2026:14:03:23 +0000] "POST /api/payments HTTP/2.0" 502 157 "-" "okhttp/4.12.0"
+192.0.2.10 - - [05/Oct/2026:14:03:24 +0000] "GET /favicon.ico HTTP/1.1" 404 - "-" "curl/8.5.0"
+10.0.0.4 - - [05/Oct/2026:14:03:25 +0000] "HEAD / HTTP/1.1" 304 0

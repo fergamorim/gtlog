@@ -1,0 +1,10 @@
+2026-10-05T14:03:22.418529+00:00 INFO [auth] user user42 logged in
+2026-10-05T14:03:22.950113+00:00 ERROR [payments] timeout calling catalog after 15023ms
+2026-10-05 14:03:23,117 WARN [catalog] slow query took 2304ms
+2026-10-05T11:03:24-03:00 FATAL [player] out of memory in worker 17
+
+@@ corrupted line without structure @@
+2026-10-05T14:03:25Z debug cache lookup key=3fa9c1
+2026-10-05T14:03:26Z [ERROR] [payments] payment 9c2e1f declined by issuer
+2026-10-05T14:03:27.004Z ERROR: could not connect to db: connection refused
+2026-10-19 10:00:00,123 - app.billing - ERROR - Payment transaction declined for order 8812

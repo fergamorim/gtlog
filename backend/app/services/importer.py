@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import BinaryIO
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -22,8 +22,6 @@ SNIFF_SIZE = 1024
 BATCH_SIZE = 5000
 DETECT_SAMPLE_LINES = 200
 MAX_TEXT_CHARS = 10_000
-MAX_SERVICE_CHARS = 100
-MAX_CATEGORY_CHARS = 50
 MAX_FILENAME_CHARS = 255
 LIST_LIMIT = 50
 
@@ -108,7 +106,7 @@ def _run(db: Session, job_id: int, path: str) -> None:
     _set(db, job_id, format=parser.name[:30])
 
     total = parsed = invalid = 0
-    batch: list[dict] = []
+    batch: list[tuple] = []
     for line in _read_lines(path):
         total += 1
         entry = parser.parse(line)
@@ -116,16 +114,17 @@ def _run(db: Session, job_id: int, path: str) -> None:
             invalid += 1
         else:
             parsed += 1
+            # Parsers already bound service/category to their column sizes (normalize.build).
             batch.append(
-                {
-                    "import_id": job_id,
-                    "timestamp": entry.timestamp,
-                    "level": entry.level,
-                    "message": entry.message[:MAX_TEXT_CHARS],
-                    "service": entry.service[:MAX_SERVICE_CHARS] if entry.service else None,
-                    "category": entry.category[:MAX_CATEGORY_CHARS] if entry.category else None,
-                    "raw": line[:MAX_TEXT_CHARS],
-                }
+                (
+                    job_id,
+                    entry.timestamp,
+                    entry.level.name,
+                    entry.message[:MAX_TEXT_CHARS],
+                    entry.service,
+                    entry.category,
+                    line[:MAX_TEXT_CHARS],
+                )
             )
         if total % BATCH_SIZE == 0:
             _flush(db, job_id, batch, total, parsed, invalid)
@@ -144,9 +143,18 @@ def _read_lines(path: str) -> Iterator[str]:
                 yield line
 
 
-def _flush(db: Session, job_id: int, rows: list[dict], total: int, parsed: int, invalid: int) -> None:
+_COPY_COLUMNS = ("import_id", "timestamp", "level", "message", "service", "category", "raw")
+_COPY_SQL = f"COPY {LogEntry.__tablename__} ({', '.join(_COPY_COLUMNS)}) FROM STDIN"
+
+
+def _flush(db: Session, job_id: int, rows: list[tuple], total: int, parsed: int, invalid: int) -> None:
+    """Write one batch and the job counters in a single commit. Rows follow _COPY_COLUMNS order."""
     if rows:
-        db.execute(insert(LogEntry), rows)
+        # COPY is ~10x faster than multi-row INSERT here; it runs in the session's transaction.
+        conn = db.connection().connection.driver_connection
+        with conn.cursor() as cursor, cursor.copy(_COPY_SQL) as copy:
+            for row in rows:
+                copy.write_row(row)
     db.execute(
         update(ImportJob)
         .where(ImportJob.id == job_id)

@@ -26,4 +26,12 @@ Plataforma de análise de logs (desafio técnico Full Stack). Importa arquivos d
 - test-writer: testes automatizados
 - docs-writer: README e docs/
 
+## Skills do projeto (.claude/skills)
+- ui-ux-pro-max: guias de UX, paletas, tipografia e tipos de gráfico (tabela e dashboard)
+- design-system: tokens de cor, espaçamento e tipografia; seguir as variáveis CSS de frontend/src/index.css
+- web-design-guidelines: revisão de acessibilidade e boas práticas de interface
+- playwright-cli: testes de ponta a ponta e screenshots da interface (saída em .playwright-cli/, fora do git)
+
+O frontend usa CSS próprio com variáveis; não introduzir Tailwind ou shadcn.
+
 Antes de entregar uma etapa: /code-review, /security-review (upload) e /simplify.

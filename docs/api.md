@@ -38,6 +38,11 @@ Filtros (todos opcionais, combináveis):
 
 Ordenação fixa: `timestamp DESC, id DESC`.
 
+Erros: `422` com `detail` em português para parâmetro inválido (ex.: `Valor inválido para o parâmetro 'level'.`),
+`start` >= `end` (`A data inicial deve ser anterior à data final.`) e cursor inválido (`Cursor de paginação inválido.`).
+Datas sem fuso em `start`/`end` são tratadas como UTC. Um `q` sem letras nem dígitos (ex.: `%`) é buscado como
+trecho literal na mensagem e no serviço.
+
 Resposta:
 
 ```json
@@ -74,6 +79,8 @@ Resposta:
 }
 ```
 
-- `error_rate` = (ERROR + CRITICAL) / total; 0 quando não há registros.
-- `by_service` e `by_category`: top 10 por total. `top_errors`: top 10 mensagens de nível ERROR/CRITICAL,
+- `error_rate` = (ERROR + CRITICAL) / total, arredondado a 4 casas; 0 quando não há registros.
+- `timeseries`: um objeto por bucket (UTC) do primeiro ao último com dados, buckets vazios com zeros.
+  O intervalo do modo automático é `start`/`end` do filtro ou, na falta deles, o primeiro/último registro.
+- `by_service` e `by_category`: top 10 por total (empate por nome; valores nulos ficam de fora). `top_errors`: top 10 mensagens de nível ERROR/CRITICAL,
   agrupadas após trocar números por `#` (ex.: `timeout calling auth after #ms`), para juntar variações.

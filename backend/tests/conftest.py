@@ -33,3 +33,39 @@ from app.core.database import Base, engine  # noqa: E402
 
 Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
+
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.core.database import SessionLocal  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import ImportJob, ImportStatus, LogEntry  # noqa: E402
+
+
+@pytest.fixture
+def client():
+    """API client over an empty database (modules may override this fixture)."""
+    with TestClient(app) as c:
+        with engine.begin() as conn:
+            conn.execute(text("TRUNCATE log_entries, import_jobs RESTART IDENTITY CASCADE"))
+        yield c
+
+
+@pytest.fixture
+def seed():
+    """Insert log rows in the given order (ids follow it); rows are dicts of LogEntry fields."""
+
+    def _seed(rows: list[dict], filename: str = "seed.log") -> tuple[int, list[int]]:
+        with SessionLocal() as db:
+            job = ImportJob(filename=filename, status=ImportStatus.DONE)
+            db.add(job)
+            db.flush()
+            entries = [LogEntry(import_id=job.id, raw=row["message"], **row) for row in rows]
+            for entry in entries:
+                db.add(entry)
+                db.flush()
+            db.commit()
+            return job.id, [e.id for e in entries]
+
+    return _seed

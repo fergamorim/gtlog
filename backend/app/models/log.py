@@ -67,3 +67,6 @@ Index("ix_log_ts_id", LogEntry.timestamp.desc(), LogEntry.id.desc())
 Index("ix_log_level_ts", LogEntry.level, LogEntry.timestamp.desc())
 Index("ix_log_service", LogEntry.service)
 Index("ix_log_search", LogEntry.search_vector, postgresql_using="gin")
+Index("ix_log_category", LogEntry.category)
+# Filtering by import keeps the table order, and ON DELETE CASCADE needs it to avoid a full scan.
+Index("ix_log_import_ts_id", LogEntry.import_id, LogEntry.timestamp.desc(), LogEntry.id.desc())

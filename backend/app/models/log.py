@@ -34,6 +34,8 @@ class ImportJob(Base):
     total_lines: Mapped[int] = mapped_column(Integer, default=0)
     parsed_lines: Mapped[int] = mapped_column(Integer, default=0)
     invalid_lines: Mapped[int] = mapped_column(Integer, default=0)
+    # Name of the parser picked by detection (e.g. "json"); null until detected.
+    format: Mapped[str | None] = mapped_column(String(30), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

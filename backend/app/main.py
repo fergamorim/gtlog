@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import models  # noqa: F401  (registers tables on Base.metadata)
 from app.api.health import router as health_router
+from app.api.imports import router as imports_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
 
@@ -25,3 +26,4 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(imports_router)

@@ -64,7 +64,7 @@ export function FilterBar({ filters, onChange, onClear, keys }: FilterBarProps) 
           {has('importId') && <ImportSelect value={filters.importId} onChange={(importId) => onChange({ importId })} />}
           <div className="filters__actions">
             <button type="button" className="btn btn--ghost" onClick={onClear} disabled={!active}>
-              <Icon name="x" /> Limpar filtros{active ? ` (${active})` : ''}
+              <Icon name="close" /> Limpar filtros{active ? ` (${active})` : ''}
             </button>
           </div>
         </div>

@@ -87,6 +87,13 @@ export function countActiveFilters(filters: LogFilters, keys?: FilterKey[]): num
   return count
 }
 
+/** Copies only `keys` from `filters`; everything else is reset. */
+export function pickFilters(filters: LogFilters, keys: FilterKey[]): LogFilters {
+  const picked: LogFilters = { ...EMPTY_FILTERS }
+  for (const key of keys) (picked as unknown as Record<FilterKey, unknown>)[key] = filters[key]
+  return picked
+}
+
 /** Builds a `?query` string for links, e.g. from the dashboard into the logs page. */
 export function filtersSearch(filters: LogFilters): string {
   const query = toParams(filters).toString()

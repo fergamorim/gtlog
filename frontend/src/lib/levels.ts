@@ -18,8 +18,14 @@ export const ERROR_LEVELS: Level[] = ['ERROR', 'CRITICAL']
 /** Levels from most to least severe (tooltips, legends that rank severity). */
 export const LEVELS_BY_SEVERITY: Level[] = [...LEVELS].reverse()
 
-/** Inline custom properties consumed by `.level-badge`, `.chip`, `.dist__bar`, etc. */
+const LEVEL_VARS = Object.fromEntries(
+  LEVELS.map((level) => {
+    const meta = LEVEL_META[level]
+    return [level, { '--lvl': meta.color, '--lvl-soft': meta.soft, '--lvl-fg': meta.fg } as CSSProperties]
+  }),
+) as Record<Level, CSSProperties>
+
+/** Inline custom properties consumed by `.level-badge`, `.chip`, `.dist__bar`, etc. (cached objects). */
 export function levelVars(level: Level): CSSProperties {
-  const meta = LEVEL_META[level]
-  return { '--lvl': meta.color, '--lvl-soft': meta.soft, '--lvl-fg': meta.fg } as CSSProperties
+  return LEVEL_VARS[level]
 }

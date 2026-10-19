@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.schema import CreateIndex
 
 from app import models  # noqa: F401  (registers tables on Base.metadata)
 from app.api.health import router as health_router
@@ -16,11 +17,14 @@ from app.core.database import Base, engine
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Demo bootstrap; a real deployment would manage schema and indexes with migrations (Alembic).
     Base.metadata.create_all(bind=engine)
-    # create_all skips existing tables; add indexes introduced after the table was first created.
-    for table in Base.metadata.sorted_tables:
-        for index in table.indexes:
-            index.create(bind=engine, checkfirst=True)
+    # create_all skips existing tables, so add indexes introduced later. IF NOT EXISTS (instead of
+    # check-then-create) keeps concurrent workers from failing with DuplicateTable.
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                conn.execute(CreateIndex(index, if_not_exists=True))
     yield
 
 

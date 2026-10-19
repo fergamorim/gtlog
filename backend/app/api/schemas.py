@@ -2,12 +2,16 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.models import ImportStatus, LogLevel
 from app.services.log_query import LogFilters
 
 MAX_INT = 2**31 - 1
+# Cap on repeated values per filter (level=...&level=...); each value is bounded by its column size.
+MAX_FILTER_VALUES = 20
+ServiceValue = Annotated[str, StringConstraints(max_length=100)]
+CategoryValue = Annotated[str, StringConstraints(max_length=50)]
 
 
 class ImportJobOut(BaseModel):
@@ -41,6 +45,10 @@ class LogEntryOut(BaseModel):
 class LogPage(BaseModel):
     items: list[LogEntryOut]
     next_cursor: str | None
+
+
+class LogCount(BaseModel):
+    total: int
 
 
 class Facets(BaseModel):
@@ -95,15 +103,15 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 def log_filters(
-    level: Annotated[list[LogLevel] | None, Query()] = None,
-    service: Annotated[list[str] | None, Query(max_length=100)] = None,
-    category: Annotated[list[str] | None, Query(max_length=50)] = None,
+    level: Annotated[list[LogLevel] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
+    service: Annotated[list[ServiceValue] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
+    category: Annotated[list[CategoryValue] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
     import_id: Annotated[int | None, Query(ge=1, le=MAX_INT)] = None,
     start: Annotated[datetime | None, Query()] = None,
     end: Annotated[datetime | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> LogFilters:
-    """Query-string filters shared by /logs and /stats."""
+    """Query-string filters shared by /logs, /logs/count and /stats."""
     start, end = _as_utc(start), _as_utc(end)
     if start is not None and end is not None and start >= end:
         raise HTTPException(status_code=422, detail="A data inicial deve ser anterior à data final.")

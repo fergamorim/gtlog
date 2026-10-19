@@ -103,6 +103,12 @@ def test_start_must_be_before_end(client, dataset):
         ({"limit": 501}, "Valor inválido para o parâmetro 'limit'."),
         ({"start": "ontem"}, "Valor inválido para o parâmetro 'start'."),
         ({"import_id": 2**40}, "Valor inválido para o parâmetro 'import_id'."),
+        ({"service": "x" * 101}, "Valor inválido para o parâmetro 'service'."),
+        ({"service": ["auth", "x" * 101]}, "Valor inválido para o parâmetro 'service'."),
+        ({"category": "x" * 51}, "Valor inválido para o parâmetro 'category'."),
+        ({"service": [f"s{i}" for i in range(21)]}, "Valor inválido para o parâmetro 'service'."),
+        ({"level": ["INFO"] * 21}, "Valor inválido para o parâmetro 'level'."),
+        ({"q": "x" * 201}, "Valor inválido para o parâmetro 'q'."),
     ],
 )
 def test_invalid_params_get_portuguese_detail(client, params, detail):
@@ -124,11 +130,58 @@ def test_full_text_search(client, dataset):
     assert ids_of(client.get("/logs", params={"q": "timeout", "import_id": dataset["import_b"]})) == [ids[6]]
 
 
+def test_filter_values_at_the_limits_are_accepted(client, dataset):
+    params = {"service": ["x" * 100] * 19 + ["payments"], "category": "y" * 50}
+    assert ids_of(client.get("/logs", params=params)) == []
+    assert ids_of(client.get("/logs", params={"service": ["x" * 100] * 19 + ["catalog"]})) == [
+        dataset["ids"][5]
+    ]
+
+
+def test_plain_words_match_as_prefixes(client, dataset):
+    ids = dataset["ids"]
+    assert ids_of(client.get("/logs", params={"q": "pay"})) == [ids[3], ids[2], ids[1]]
+    assert ids_of(client.get("/logs", params={"q": "TIMEO"})) == [ids[6], ids[2], ids[1]]
+    # Every word must match (AND), each as a prefix.
+    assert ids_of(client.get("/logs", params={"q": "time call pay"})) == [ids[2], ids[1]]
+    assert ids_of(client.get("/logs", params={"q": "time nothinglikethis"})) == []
+    # tsquery operators typed by the user are dropped, not interpreted.
+    assert ids_of(client.get("/logs", params={"q": "pay & ! | ( :* '"})) == [ids[3], ids[2], ids[1]]
+
+
+def test_websearch_syntax_is_kept(client, dataset):
+    ids = dataset["ids"]
+    # A quoted phrase is an exact phrase, so no prefix matching inside it.
+    assert ids_of(client.get("/logs", params={"q": '"connection lost"'})) == [ids[3]]
+    assert ids_of(client.get("/logs", params={"q": '"connection los"'})) == []
+    assert ids_of(client.get("/logs", params={"q": "timeout or database"})) == [
+        ids[6],
+        ids[3],
+        ids[2],
+        ids[1],
+    ]
+    assert ids_of(client.get("/logs", params={"q": "timeout -payments"})) == [ids[6]]
+
+
 def test_search_without_words_matches_literally(client, dataset):
     ids = dataset["ids"]
     assert ids_of(client.get("/logs", params={"q": "%"})) == [ids[5]]
     assert ids_of(client.get("/logs", params={"q": "/"})) == [ids[7]]
+    assert ids_of(client.get("/logs", params={"q": "_"})) == []  # escaped, not a LIKE wildcard
     assert ids_of(client.get("/logs", params={"q": "   "})) == ids_of(client.get("/logs"))
+
+
+def test_count(client, dataset):
+    assert client.get("/logs/count").json() == {"total": 8}
+    params = {"level": ["ERROR", "CRITICAL"], "q": "pay", "import_id": dataset["import_a"]}
+    assert client.get("/logs/count", params=params).json() == {"total": 3}
+    params = {"start": "2026-10-05T10:10:00Z", "end": "2026-10-05T10:30:00Z"}
+    assert client.get("/logs/count", params=params).json() == {"total": 2}
+    response = client.get(
+        "/logs/count", params={"start": "2026-10-06T00:00:00Z", "end": "2026-10-05T00:00:00Z"}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "A data inicial deve ser anterior à data final."
 
 
 def test_cursor_pages_have_no_gaps_or_duplicates_across_ties(client, seed):
@@ -220,3 +273,4 @@ def test_facets(client, dataset):
 def test_empty_dataset(client):
     assert client.get("/logs").json() == {"items": [], "next_cursor": None}
     assert client.get("/logs/facets").json() == {"services": [], "categories": []}
+    assert client.get("/logs/count").json() == {"total": 0}

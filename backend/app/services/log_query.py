@@ -15,8 +15,13 @@ from app.models import LogEntry, LogLevel
 ERROR_LEVELS = (LogLevel.ERROR, LogLevel.CRITICAL)
 MAX_BIGINT = 2**63 - 1
 
-# A term with no letters or digits yields an empty tsquery (matches nothing), so search it literally.
-_WORD_CHARS = re.compile(r"\w")
+# Runs of Unicode letters/digits: they never contain tsquery operators, so a query can be built from them.
+_TOKEN = re.compile(r"[^\W_]+")
+# Quotes, " or " and a leading "-" are websearch syntax (phrase, alternative, exclusion).
+_WEBSEARCH_SYNTAX = re.compile(r'"|\sor\s|(?:^|\s)-\S', re.IGNORECASE)
+
+
+_SIMPLE = cast("simple", REGCONFIG)
 
 
 class InvalidCursor(Exception):
@@ -55,11 +60,18 @@ def build_conditions(filters: LogFilters) -> list[ColumnElement[bool]]:
 
 
 def _text_condition(q: str) -> ColumnElement[bool]:
-    if _WORD_CHARS.search(q):
-        query = func.websearch_to_tsquery(cast("simple", REGCONFIG), q)
-        return LogEntry.search_vector.op("@@")(query)
-    pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-    return or_(LogEntry.message.ilike(pattern, escape="\\"), LogEntry.service.ilike(pattern, escape="\\"))
+    tokens = _TOKEN.findall(q)
+    if not tokens:
+        # No letters or digits: the tsquery would be empty and match nothing, so search literally.
+        pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        return or_(LogEntry.message.ilike(pattern, escape="\\"), LogEntry.service.ilike(pattern, escape="\\"))
+    if _WEBSEARCH_SYNTAX.search(q):
+        query = func.websearch_to_tsquery(_SIMPLE, q)
+    else:
+        # Plain words match as prefixes ("pay" finds "payments"). Tokens are letters/digits only,
+        # so they cannot inject tsquery operators; the string is still sent as a bound parameter.
+        query = func.to_tsquery(_SIMPLE, " & ".join(f"{token}:*" for token in tokens))
+    return LogEntry.search_vector.op("@@")(query)
 
 
 def encode_cursor(entry: LogEntry) -> str:
@@ -101,6 +113,11 @@ def list_logs(
         return rows, None
     page = rows[:limit]
     return page, encode_cursor(page[-1])
+
+
+def count_logs(db: Session, filters: LogFilters) -> int:
+    stmt = select(func.count()).select_from(LogEntry).where(*build_conditions(filters))
+    return db.scalar(stmt) or 0
 
 
 def get_log(db: Session, entry_id: int) -> LogEntry | None:

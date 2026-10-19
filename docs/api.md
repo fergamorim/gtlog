@@ -28,11 +28,11 @@ Filtros (todos opcionais, combináveis):
 | Parâmetro | Exemplo | Regra |
 | --- | --- | --- |
 | `level` | `level=ERROR&level=CRITICAL` | Repetível; valores DEBUG, INFO, WARNING, ERROR, CRITICAL. |
-| `service` | `service=payments` | Repetível; igualdade exata. |
-| `category` | `category=timeout` | Repetível. |
+| `service` | `service=payments` | Repetível; igualdade exata; cada valor até 100 caracteres. |
+| `category` | `category=timeout` | Repetível; cada valor até 50 caracteres. |
 | `import_id` | `import_id=3` | Restringe a uma importação. |
 | `start`, `end` | `start=2026-10-01T00:00:00Z` | Intervalo de `timestamp`; `start` inclusivo, `end` exclusivo. |
-| `q` | `q=timeout payments` | Busca textual (full-text em mensagem e serviço). |
+| `q` | `q=timeout pay` | Busca textual (full-text em mensagem e serviço); até 200 caracteres. Ver regras abaixo. |
 | `limit` | `limit=100` | 1 a 500, padrão 100. |
 | `cursor` | valor de `next_cursor` | Paginação por cursor (keyset); opaco para o cliente. |
 
@@ -40,8 +40,15 @@ Ordenação fixa: `timestamp DESC, id DESC`.
 
 Erros: `422` com `detail` em português para parâmetro inválido (ex.: `Valor inválido para o parâmetro 'level'.`),
 `start` >= `end` (`A data inicial deve ser anterior à data final.`) e cursor inválido (`Cursor de paginação inválido.`).
-Datas sem fuso em `start`/`end` são tratadas como UTC. Um `q` sem letras nem dígitos (ex.: `%`) é buscado como
-trecho literal na mensagem e no serviço.
+Datas sem fuso em `start`/`end` são tratadas como UTC. Filtros repetíveis aceitam até 20 valores cada.
+
+Busca (`q`), sem diferenciar maiúsculas:
+
+- Palavras simples casam por prefixo e todas precisam aparecer: `q=time pay` encontra
+  "timeout ... payments". Símbolos são ignorados.
+- Com sintaxe de busca web (aspas, ` or `, termo iniciado por `-`) vale `websearch_to_tsquery`:
+  `"connection lost"` é frase exata (sem prefixo), `timeout or database` é alternativa, `-payments` exclui.
+- Sem letras nem dígitos (ex.: `%`) o texto é buscado como trecho literal na mensagem e no serviço.
 
 Resposta:
 
@@ -52,6 +59,9 @@ Resposta:
 ```
 
 `GET /logs/{id}`: um registro (404 se não existir).
+
+`GET /logs/count` → `{"total": 8123}`: total de registros com os mesmos filtros de `/logs` (exceto `cursor` e
+`limit`), para a tabela mostrar o total sem chamar `/stats`.
 
 ## Facetas para filtros
 

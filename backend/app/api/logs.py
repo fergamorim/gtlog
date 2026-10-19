@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.schemas import Facets, LogEntryOut, LogFiltersDep, LogPage
+from app.api.schemas import Facets, LogCount, LogEntryOut, LogFiltersDep, LogPage
 from app.core.database import DbSession
 from app.services import log_query
 
@@ -23,7 +23,12 @@ def list_logs(
     return LogPage(items=[LogEntryOut.model_validate(e) for e in items], next_cursor=next_cursor)
 
 
-# Declared before /{entry_id} so "facets" is not parsed as an id.
+# Declared before /{entry_id} so "count" and "facets" are not parsed as ids.
+@router.get("/count", response_model=LogCount)
+def count_logs(filters: LogFiltersDep, db: DbSession) -> LogCount:
+    return LogCount(total=log_query.count_logs(db, filters))
+
+
 @router.get("/facets", response_model=Facets)
 def get_facets(db: DbSession) -> Facets:
     return Facets(**log_query.facets(db))

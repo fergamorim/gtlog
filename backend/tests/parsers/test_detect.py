@@ -11,7 +11,8 @@ from app.parsers.syslog import SyslogParser
 
 @pytest.mark.parametrize(
     ("fixture", "expected"),
-    [("app.log", "text"), ("app.jsonl", "json"), ("access.log", "http"), ("syslog.log", "syslog")],
+    [("app.log", "text"), ("app.jsonl", "json"), ("access.log", "http"), ("syslog.log", "syslog"),
+     ("app.csv", "csv"), ("app_semicolon.csv", "csv")],
 )
 def test_detects_fixture_format(fixture_lines, fixture, expected):
     parser = detect_parser(fixture_lines(fixture))
@@ -46,7 +47,7 @@ def test_parser_names_are_unique():
 GENERATOR = Path(__file__).resolve().parents[3] / "scripts" / "generate_logs.py"
 
 
-@pytest.mark.parametrize("fmt", ["text", "json"])
+@pytest.mark.parametrize("fmt", ["text", "json", "csv"])
 def test_generator_output_is_detected_and_parsed(tmp_path, fmt):
     out = tmp_path / f"sample.{fmt}"
     subprocess.run(
@@ -60,6 +61,10 @@ def test_generator_output_is_detected_and_parsed(tmp_path, fmt):
     assert parser.name == fmt
 
     results = [parser.parse(line) for line in lines]
+    is_header = getattr(parser, "is_header", None)
+    headers = [i for i, line in enumerate(lines) if is_header and is_header(line)]
+    assert headers == ([0] if fmt == "csv" else [])
+    results = [r for i, r in enumerate(results) if i not in headers]
     corrupted = sum(line.startswith("@@") for line in lines)
     assert corrupted > 0
     assert sum(r is None for r in results) == corrupted

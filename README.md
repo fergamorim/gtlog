@@ -1,7 +1,7 @@
 # GTLog
 
 GTLog é uma plataforma web para análise de arquivos de log. Você envia um arquivo (texto, JSON lines, access log
-HTTP ou syslog), a API detecta o formato, normaliza cada linha (data em UTC, nível, serviço, mensagem), classifica
+HTTP, syslog ou CSV), a API detecta o formato, normaliza cada linha (data em UTC, nível, serviço, mensagem), classifica
 por categoria (timeout, database, auth...) e grava no PostgreSQL. A interface mostra os registros em uma tabela
 virtualizada com filtros e busca textual, e um dashboard com volume por nível ao longo do tempo, principais serviços,
 categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend em React 18 + TypeScript.
@@ -21,7 +21,7 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 | Requisito do desafio | Como foi atendido |
 | --- | --- |
 | Importação de arquivos | Tela **Importar** com arrastar e soltar, ou `POST /imports`. O upload é validado (tamanho, binário, vazio) e processado em segundo plano; a tela acompanha o progresso. |
-| Processamento e classificação | Detecção automática entre 4 formatos ([lista abaixo](#formatos-de-log-suportados)). Nível normalizado (WARN, err, fatal, códigos HTTP, severidade syslog) e categoria por palavras-chave da mensagem. Linhas inválidas são contadas e ignoradas, sem derrubar a importação. |
+| Processamento e classificação | Detecção automática entre 5 formatos ([lista abaixo](#formatos-de-log-suportados)). Nível normalizado (WARN, err, fatal, códigos HTTP, severidade syslog) e categoria por palavras-chave da mensagem. Linhas inválidas são contadas e ignoradas, sem derrubar a importação. |
 | Armazenamento | PostgreSQL 16, ingestão com `COPY` em lotes de 5.000 linhas, índices para os filtros e para a ordenação. |
 | Tabela responsiva | Colunas no desktop e cartões no celular; clique em uma linha para ver a linha original num painel lateral. |
 | Filtros por nível, data e conteúdo | Nível, período (com atalhos 1 h / 24 h / 7 d / 30 d), serviço, categoria e importação. Combináveis e guardados na URL, então dá para compartilhar o link de uma visão. |
@@ -79,6 +79,7 @@ exercitar a contagem de linhas inválidas.
 ```bash
 python3 scripts/generate_logs.py --lines 200000 --out samples/app.log
 python3 scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
+python3 scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
 ```
 
 Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005) e `--seed` (padrão 42).
@@ -167,6 +168,7 @@ O formato é detectado pelas primeiras 200 linhas não vazias; vence o parser qu
 | Access log HTTP (Apache/Nginx combined ou common; 5xx = ERROR, 4xx = WARNING) | `198.51.100.23 - - [05/Oct/2026:14:03:23 +0000] "POST /api/payments HTTP/2.0" 502 157 "-" "okhttp/4.12.0"` |
 | Syslog RFC 5424 | `<165>1 2026-10-05T14:03:22.003Z web01 nginx 2112 ID47 - upstream timed out` |
 | Syslog RFC 3164 (BSD) | `<34>Oct  5 14:03:22 web01 sshd[4721]: Failed password for root from 10.0.0.5` |
+| CSV com cabeçalho (separador `,`, `;` ou tab; colunas como no JSON, mais `date`/`datetime` e `source`; `timestamp` e `message` obrigatórias; a linha de cabeçalho não conta como inválida; campos entre aspas não podem quebrar linha) | `timestamp,level,service,message` e depois `2026-10-05T14:03:22Z,ERROR,payments,"timeout calling catalog, after 15023ms"` |
 
 Linhas fora do formato detectado contam como inválidas. Um arquivo em que nenhum parser reconhece nenhuma linha
 termina com status `FAILED` ("Formato de log não reconhecido.").

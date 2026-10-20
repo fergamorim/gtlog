@@ -52,6 +52,19 @@ describe('ImportsPage upload', () => {
     expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
   })
 
+  it('accepts CSV files and mentions them in the hint', async () => {
+    const fetch = uploadApi(() => json({ detail: 'erro' }, 422))
+    renderWithProviders(<ImportsPage />)
+
+    expect(screen.getByText(/CSV com cabeçalho/)).toBeInTheDocument()
+    const csv = new File(['timestamp,level,message\n2026-10-05T17:46:57Z,INFO,ok\n'], 'export.csv', { type: 'text/csv' })
+    await userEvent.upload(screen.getByLabelText('Arquivo de log'), csv)
+
+    await screen.findByRole('alert')
+    const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')
+    expect((post?.[1]?.body as FormData).get('file')).toBe(csv)
+  })
+
   it('shows import progress after a successful upload', async () => {
     const job: ImportJob = {
       id: 9, filename: 'app.log', status: 'DONE', format: 'text', total_lines: 10, parsed_lines: 9, invalid_lines: 1,

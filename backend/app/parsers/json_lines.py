@@ -7,13 +7,12 @@ pino/bunyan levels (10 trace ... 60 fatal) are mapped too.
 """
 
 import json
-import math
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from app.models.log import LogLevel
 from app.parsers.base import ParsedLine
-from app.parsers.normalize import build, normalize_level, parse_iso_timestamp
+from app.parsers.normalize import build, normalize_level, parse_epoch, parse_iso_timestamp
 
 name = "json"
 
@@ -32,10 +31,6 @@ _NUMERIC_LEVELS: dict[int, LogLevel] = {
     60: LogLevel.CRITICAL,  # fatal
 }
 
-# Epoch values above this are taken as milliseconds (year 2286 in seconds).
-_MAX_EPOCH_SECONDS = 10_000_000_000
-
-
 def _first(record: dict[str, Any], keys: tuple[str, ...]) -> Any:
     for key in keys:
         if record.get(key) is not None:
@@ -46,12 +41,8 @@ def _first(record: dict[str, Any], keys: tuple[str, ...]) -> Any:
 def _timestamp(value: Any) -> datetime | None:
     if isinstance(value, str):
         return parse_iso_timestamp(value)
-    if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value):
-        seconds = value / 1000 if value > _MAX_EPOCH_SECONDS else value
-        try:
-            return datetime.fromtimestamp(seconds, tz=UTC)
-        except (ValueError, OverflowError, OSError):
-            return None
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return parse_epoch(value)
     return None
 
 

@@ -35,12 +35,12 @@ export function UploadDropzone({ onFile, disabled }: UploadDropzoneProps) {
       <button type="button" className="btn btn--primary" onClick={() => inputRef.current?.click()} disabled={disabled}>
         <Icon name="file" /> Selecionar arquivo
       </button>
-      <p className="dropzone__hint">Arquivos de texto (.log, .txt, .jsonl). Linhas em texto ou JSON.</p>
+      <p className="dropzone__hint">Arquivos de texto (.log, .txt, .jsonl, .csv). Linhas em texto, JSON ou CSV com cabeçalho.</p>
       <input
         ref={inputRef}
         type="file"
         className="sr-only"
-        accept=".log,.txt,.json,.jsonl,.ndjson,text/plain,application/json"
+        accept=".log,.txt,.json,.jsonl,.ndjson,.csv,text/plain,application/json,text/csv"
         aria-label="Arquivo de log"
         tabIndex={-1}
         disabled={disabled}

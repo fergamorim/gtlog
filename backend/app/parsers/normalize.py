@@ -1,5 +1,6 @@
 """Helpers shared by the format parsers: levels, timestamps and ParsedLine assembly."""
 
+import math
 from datetime import UTC, datetime
 
 from app.models.log import LogLevel
@@ -78,6 +79,21 @@ def parse_iso_timestamp(value: str) -> datetime | None:
     try:
         return to_utc(datetime.fromisoformat(value.strip().replace(",", ".")))
     except (ValueError, OverflowError):
+        return None
+
+
+# Epoch values above this are taken as milliseconds (year 2286 in seconds).
+_MAX_EPOCH_SECONDS = 10_000_000_000
+
+
+def parse_epoch(value: float) -> datetime | None:
+    """Epoch seconds, or milliseconds when too large to be seconds, into UTC; None if out of range."""
+    if not math.isfinite(value):
+        return None
+    seconds = value / 1000 if value > _MAX_EPOCH_SECONDS else value
+    try:
+        return datetime.fromtimestamp(seconds, tz=UTC)
+    except (ValueError, OverflowError, OSError):
         return None
 
 

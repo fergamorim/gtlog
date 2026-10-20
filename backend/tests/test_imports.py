@@ -81,6 +81,33 @@ def test_upload_text_log_is_processed(client, temp_files):
     assert temp_files and not any(os.path.exists(p) for p in temp_files)
 
 
+def test_upload_csv_skips_header_and_counts_invalid_rows(client, monkeypatch):
+    monkeypatch.setattr(importer, "BATCH_SIZE", 2)
+    rows = [
+        "2026-10-05T17:46:57Z,DEBUG,catalog,cache lookup key=7248ad",
+        '2026-10-05T18:27:16Z,ERROR,payments,"database connection timeout, after 30s"',
+        "1791209003,warn,player,memory usage at 91%",
+    ]
+    body = "\ufeffTimestamp,Level,Service,Message\r\n" + "\r\n".join(rows[:2] + INVALID_LINES[:1] + rows[2:])
+    response = upload(client, body.encode(), name="export.csv")
+
+    job = client.get(f"/imports/{response.json()['id']}").json()
+    assert job["status"] == "DONE"
+    assert job["format"] == "csv"
+    assert job["total_lines"] == len(rows) + 1
+    assert job["parsed_lines"] == len(rows)
+    assert job["invalid_lines"] == 1
+
+    with SessionLocal() as db:
+        query = select(LogEntry).where(LogEntry.import_id == job["id"]).order_by(LogEntry.id)
+        stored = db.scalars(query).all()
+    assert [r.raw for r in stored] == rows
+    assert stored[1].message == "database connection timeout, after 30s"
+    assert stored[1].level == LogLevel.ERROR
+    assert stored[1].service == "payments"
+    assert stored[2].level == LogLevel.WARNING
+
+
 def test_counters_accumulate_across_batches(client, monkeypatch):
     monkeypatch.setattr(importer, "BATCH_SIZE", 3)
     lines = VALID_LINES * 5 + INVALID_LINES

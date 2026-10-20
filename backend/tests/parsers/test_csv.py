@@ -114,7 +114,6 @@ def test_first_alias_wins_over_later_ones():
 @pytest.mark.parametrize(
     "header",
     [
-        "timestamp,level,service",  # no message column
         "level,service,message",  # no timestamp column
         "2026-10-05T14:03:22Z INFO [auth] user user42 logged in",
         '{"timestamp": "2026-10-05T14:03:22Z", "level": "INFO", "message": "json"}',
@@ -159,3 +158,73 @@ def test_detected_parser_still_recognizes_the_header_on_reread(fixture_lines):
     assert parser.parse(lines[0]) is None
     assert parser.is_header(lines[0])
     assert parser.parse(lines[1]) is not None
+
+
+def test_incident_export_without_message_column(fixture_lines):
+    """ServiceNow-style export: day-first dates, priority scale, assignment group, no message column."""
+    lines = fixture_lines("incidents.csv")
+    parser, results = parse_all(lines)
+    assert results[0] is None and parser.is_header(lines[0])
+    parsed = results[1]
+    assert parsed is not None
+    # sys_updated_at wins over opened_at/sys_created_at: each row is one update of the incident.
+    assert parsed.timestamp == datetime(2016, 2, 29, 1, 23, tzinfo=UTC)
+    assert parsed.level is LogLevel.WARNING  # priority "3 - Moderate"
+    assert parsed.service == "Group 56"
+    assert parsed.message.startswith("number=INC0000045 incident_state=New active=true")
+    words = parsed.message.split()
+    assert not any(w.startswith(("sys_updated_at=", "priority=", "assignment_group=")) for w in words)
+    assert "cmdb_ci=" not in parsed.message  # "?" placeholders are dropped
+    assert all(result is not None for result in results[1:])
+
+
+@pytest.mark.parametrize(
+    ("value", "level"),
+    [
+        ("1 - Critical", LogLevel.CRITICAL),
+        ("2 - High", LogLevel.ERROR),
+        ("3 - Moderate", LogLevel.WARNING),
+        ("2 - Medium", LogLevel.WARNING),
+        ("4 - Low", LogLevel.INFO),
+        ("5 - Planning", LogLevel.DEBUG),
+        ("?", LogLevel.INFO),
+        ("warn", LogLevel.WARNING),
+    ],
+)
+def test_priority_scale_levels(value, level):
+    _, results = parse_all(["opened_at,priority,description", f"2026-10-05T14:03:22Z,{value},disk full"])
+    assert results[1] is not None
+    assert results[1].level is level
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("5/3/2016 12:00", datetime(2016, 3, 5, 12, 0, tzinfo=UTC)),
+        ("29/2/2016 01:16:09", datetime(2016, 2, 29, 1, 16, 9, tzinfo=UTC)),
+        ("05/10/2026", datetime(2026, 10, 5, tzinfo=UTC)),
+    ],
+)
+def test_day_first_dates(value, expected):
+    _, results = parse_all(["date,message", f"{value},ok"])
+    assert results[1] is not None
+    assert results[1].timestamp == expected
+
+
+@pytest.mark.parametrize("value", ["31/2/2016 10:00", "1/13/2016", "?"])
+def test_invalid_day_first_dates_reject_the_row(value):
+    _, results = parse_all(["date,message", f"{value},ok"])
+    assert results[1] is None
+
+
+def test_message_built_from_other_columns_skips_empty_values():
+    _, results = parse_all(["time,level,host,user,action", "2026-10-05T14:03:22Z,ERROR,web01,,login failed"])
+    parsed = results[1]
+    assert parsed is not None
+    assert parsed.service == "web01"
+    assert parsed.message == "action=login failed"
+
+
+def test_row_with_only_mapped_columns_and_no_message_is_rejected():
+    _, results = parse_all(["timestamp,level", "2026-10-05T14:03:22Z,INFO"])
+    assert results[1] is None

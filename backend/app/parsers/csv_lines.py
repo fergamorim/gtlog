@@ -5,15 +5,20 @@
 
 The first non-blank line is the header. Its delimiter is ``,``, ``;`` or tab
 (whichever splits it into the most columns and still yields a valid header).
-Column names are matched case-insensitively, first alias wins:
-timestamp/time/@timestamp/date/datetime, level/severity,
-service/logger/app/source, message/msg. A header without a timestamp and a
-message column is rejected and then every line returns None, so detection
-never picks CSV for other formats. Other columns are ignored.
+Column names are matched case-insensitively, first alias wins (see
+``_COLUMN_ALIASES``): besides the JSON-lines names it knows common export
+columns such as ``sys_updated_at``/``opened_at``, ``priority``/``impact`` and
+``assignment_group``/``category``. Only a timestamp column is required, so
+detection never picks CSV for other formats. Without a message column the
+message is built from the other columns as ``name=value`` pairs, which keeps
+every field searchable.
 
-Timestamps are ISO 8601 or epoch seconds/milliseconds. An empty or missing
-level defaults to INFO; an unknown one rejects the row, as do a column count
-different from the header's and malformed quoting.
+Timestamps are ISO 8601, epoch seconds/milliseconds or day-first
+``d/m/yyyy [H:MM[:SS]]`` (as exported in Brazil and Europe). Levels accept
+the usual names plus priority scales like ``1 - Critical``/``3 - Low``. An
+empty or missing level defaults to INFO; an unknown one rejects the row, as do
+a column count different from the header's and malformed quoting. Values such
+as ``?`` or ``N/A`` count as empty.
 
 The parser is stateful per file (use a fresh CsvParser for each one).
 ``is_header`` tells the importer which line was the header so it is not
@@ -24,7 +29,7 @@ end of the line rejects the row).
 
 import csv
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.models.log import LogLevel
 from app.parsers.base import ParsedLine
@@ -34,13 +39,45 @@ name = "csv"
 
 _DELIMITERS = (",", ";", "\t")
 _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
-    "timestamp": ("timestamp", "time", "@timestamp", "date", "datetime"),
-    "level": ("level", "severity"),
-    "service": ("service", "logger", "app", "source"),
-    "message": ("message", "msg"),
+    "timestamp": (
+        "timestamp",
+        "time",
+        "@timestamp",
+        "date",
+        "datetime",
+        "event_time",
+        "updated_at",
+        "sys_updated_at",
+        "created_at",
+        "sys_created_at",
+        "opened_at",
+    ),
+    "level": ("level", "severity", "priority", "urgency", "impact"),
+    "service": ("service", "logger", "app", "source", "component", "host", "assignment_group", "category"),
+    "message": ("message", "msg", "description", "short_description", "summary"),
 }
-_REQUIRED = ("timestamp", "message")
+_REQUIRED = ("timestamp",)
 _EPOCH = re.compile(r"^\d+(?:\.\d+)?$")
+_DAY_FIRST = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$")
+# Priority/impact scales ("1 - Critical", "3 - Moderate"): the number is dropped, the word mapped.
+_SCALE_PREFIX = re.compile(r"^\d+\s*-\s*")
+_SCALE_LEVELS: dict[str, LogLevel] = {
+    "CRITICAL": LogLevel.CRITICAL,
+    "HIGH": LogLevel.ERROR,
+    "MODERATE": LogLevel.WARNING,
+    "MEDIUM": LogLevel.WARNING,
+    "LOW": LogLevel.INFO,
+    "PLANNING": LogLevel.DEBUG,
+}
+_MISSING = frozenset({"", "?", "-", "n/a", "na", "null", "none"})
+
+
+def _value(raw: str | None) -> str | None:
+    """The stripped value, or None for empty cells and placeholders like '?' or 'N/A'."""
+    if raw is None:
+        return None
+    value = raw.strip()
+    return None if value.lower() in _MISSING else value
 
 
 def _split(line: str, delimiter: str) -> list[str] | None:
@@ -63,17 +100,24 @@ def _columns(names: list[str]) -> dict[str, int] | None:
     return columns if all(field in columns for field in _REQUIRED) else None
 
 
-def _timestamp(value: str) -> datetime | None:
-    value = value.strip()
+def _timestamp(value: str | None) -> datetime | None:
+    if value is None:
+        return None
     if _EPOCH.match(value):
         return parse_epoch(float(value))
-    return parse_iso_timestamp(value) if value else None
+    if match := _DAY_FIRST.match(value):
+        day, month, year, hour, minute, second = (int(part or 0) for part in match.groups())
+        try:
+            return datetime(year, month, day, hour, minute, second, tzinfo=UTC)
+        except ValueError:
+            return None
+    return parse_iso_timestamp(value)
 
 
 def _level(value: str | None) -> LogLevel | None:
-    if value is None or not value.strip():
+    if value is None:
         return LogLevel.INFO
-    return normalize_level(value)
+    return normalize_level(value) or _SCALE_LEVELS.get(_SCALE_PREFIX.sub("", value).upper())
 
 
 class CsvParser:
@@ -86,6 +130,7 @@ class CsvParser:
         self._delimiter = ","
         self._width = 0
         self._columns: dict[str, int] | None = None
+        self._names: list[str] = []
 
     def is_header(self, line: str) -> bool:
         """True for the header line (also if it repeats, e.g. concatenated CSV files)."""
@@ -104,13 +149,23 @@ class CsvParser:
         row = _split(line, self._delimiter)
         if row is None or len(row) != self._width:
             return None
-        get = {field: row[index] for field, index in self._columns.items()}
+        get = {field: _value(row[index]) for field, index in self._columns.items()}
         timestamp = _timestamp(get["timestamp"])
         level = _level(get.get("level"))
-        message = get["message"]
-        if timestamp is None or level is None or not message.strip():
+        message = get["message"] if "message" in self._columns else self._describe(row)
+        if timestamp is None or level is None or not message:
             return None
         return build(timestamp, level, message, get.get("service"))
+
+    def _describe(self, row: list[str]) -> str:
+        """Message for files without a message column: the unmapped columns as name=value pairs."""
+        used = set(self._columns.values()) if self._columns else set()
+        pairs = (
+            f"{name.strip()}={value}"
+            for index, (name, raw) in enumerate(zip(self._names, row, strict=True))
+            if index not in used and (value := _value(raw)) is not None
+        )
+        return " ".join(pairs)
 
     def _read_header(self, line: str) -> None:
         self._header = line
@@ -119,3 +174,4 @@ class CsvParser:
             columns = _columns(names)
             if columns is not None and len(names) > self._width:
                 self._delimiter, self._width, self._columns = delimiter, len(names), columns
+                self._names = names

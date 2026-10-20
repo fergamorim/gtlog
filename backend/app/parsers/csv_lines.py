@@ -8,7 +8,8 @@ The first non-blank line is the header. Its delimiter is ``,``, ``;`` or tab
 Column names are matched case-insensitively, first alias wins (see
 ``_COLUMN_ALIASES``): besides the JSON-lines names it knows common export
 columns such as ``sys_updated_at``/``opened_at``, ``priority``/``impact`` and
-``assignment_group``/``category``. Only a timestamp column is required, so
+``assignment_group``/``category``. Only a timestamp column is required (``ts`` and names ending in ``_at``,
+``_time`` or ``_ts`` also count), so
 detection never picks CSV for other formats. Without a message column the
 message is built from the other columns as ``name=value`` pairs, which keeps
 every field searchable.
@@ -43,6 +44,9 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "timestamp",
         "time",
         "@timestamp",
+        "ts",
+        "@t",
+        "epoch",
         "date",
         "datetime",
         "event_time",
@@ -57,6 +61,8 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "message": ("message", "msg", "description", "short_description", "summary"),
 }
 _REQUIRED = ("timestamp",)
+# Without a known timestamp name, the first column named like "login_time" or "closed_at" is used.
+_TIMESTAMP_SUFFIXES = ("_at", "_time", "_ts", "_timestamp", "_date")
 _EPOCH = re.compile(r"^\d+(?:\.\d+)?$")
 _DAY_FIRST = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$")
 # Priority/impact scales ("1 - Critical", "3 - Moderate"): the number is dropped, the word mapped.
@@ -97,6 +103,10 @@ def _columns(names: list[str]) -> dict[str, int] | None:
         for field, aliases in _COLUMN_ALIASES.items()
         if any(alias in positions for alias in aliases)
     }
+    if "timestamp" not in columns:
+        suffixed = (index for name, index in positions.items() if name.endswith(_TIMESTAMP_SUFFIXES))
+        if (index := next(suffixed, None)) is not None:
+            columns["timestamp"] = index
     return columns if all(field in columns for field in _REQUIRED) else None
 
 

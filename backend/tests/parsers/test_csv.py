@@ -228,3 +228,30 @@ def test_message_built_from_other_columns_skips_empty_values():
 def test_row_with_only_mapped_columns_and_no_message_is_rejected():
     _, results = parse_all(["timestamp,level", "2026-10-05T14:03:22Z,INFO"])
     assert results[1] is None
+
+
+def test_ssh_dataset_with_epoch_ts_column(fixture_lines):
+    """Login-attempt dataset: epoch seconds in "ts" (some with ".0"), no level or message column."""
+    lines = fixture_lines("ssh.csv")
+    _, results = parse_all(lines)
+    assert all(result is not None for result in results[1:])
+    first = results[1]
+    assert first.timestamp == datetime.fromtimestamp(1544678520, tz=UTC)
+    assert first.level is LogLevel.INFO
+    assert first.message.startswith("user=kamran is_private=1 is_failure=1")
+    assert "ts=" not in first.message
+    assert results[2].timestamp == datetime.fromtimestamp(1544678538, tz=UTC)
+
+
+@pytest.mark.parametrize("name", ["login_time", "closed_at", "event_ts", "Created_Date"])
+def test_timestamp_column_found_by_name_suffix(name):
+    _, results = parse_all([f"user,{name},action", "ana,2026-10-05T14:03:22Z,login"])
+    parsed = results[1]
+    assert parsed is not None
+    assert parsed.timestamp == datetime(2026, 10, 5, 14, 3, 22, tzinfo=UTC)
+    assert parsed.message == "user=ana action=login"
+
+
+def test_known_timestamp_name_wins_over_suffix():
+    _, results = parse_all(["closed_at,timestamp,msg", "2020-01-01T00:00:00Z,2026-10-05T14:03:22Z,ok"])
+    assert results[1].timestamp == datetime(2026, 10, 5, 14, 3, 22, tzinfo=UTC)

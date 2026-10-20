@@ -2,16 +2,16 @@
 
 from collections.abc import Iterable
 
-from app.parsers import http_access, json_lines, syslog, text
+from app.parsers import csv_lines, http_access, json_lines, syslog, text
 from app.parsers.base import LineParser
 
 
 def all_parsers() -> tuple[LineParser, ...]:
     """Fresh parser instances, most specific first (an earlier format wins a tie).
 
-    Fresh because some parsers hold per-file state (syslog's reference year).
+    Fresh because some parsers hold per-file state (syslog's reference year, the CSV header).
     """
-    return (json_lines, syslog.SyslogParser(), http_access, text)
+    return (json_lines, syslog.SyslogParser(), http_access, csv_lines.CsvParser(), text)
 
 
 def detect_parser(sample_lines: Iterable[str]) -> LineParser | None:

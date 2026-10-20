@@ -1,0 +1,9 @@
+Timestamp,Level,Service,Message,request_id
+2026-10-05T14:03:22.418529+00:00,INFO,auth,user user42 logged in,r-81f2
+2026-10-05T14:03:22.950113+00:00,ERROR,payments,"timeout calling catalog, after 15023ms",r-81f3
+2026-10-05 11:03:23-03:00,warn,catalog,"slow query ""orders_by_user"" took 2304ms",r-81f4
+1791209003,crit,player,disk usage above 95% on node-3,r-81f5
+2026-10-05T14:03:24Z,,search,database connection refused,r-81f6
+2026-10-05T14:03:25Z,INFO,search,row with a missing column
+@@ corrupted line without structure @@
+2026-10-05T14:03:26Z,LOUD,auth,unknown level,r-81f9

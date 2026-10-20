@@ -105,11 +105,15 @@ def _run(db: Session, job_id: int, path: str) -> None:
         return
     _set(db, job_id, format=parser.name[:30])
 
+    # Parsers with a header line (CSV) expose is_header; that line is neither parsed nor invalid.
+    is_header = getattr(parser, "is_header", None)
     total = parsed = invalid = 0
     batch: list[tuple] = []
     for line in _read_lines(path):
-        total += 1
         entry = parser.parse(line)
+        if entry is None and is_header is not None and is_header(line):
+            continue
+        total += 1
         if entry is None:
             invalid += 1
         else:

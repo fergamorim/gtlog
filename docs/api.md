@@ -19,6 +19,9 @@ Job:
  "created_at": "...", "finished_at": "..."}
 ```
 
+`format` é o formato detectado: `text`, `json`, `http`, `syslog` ou `csv`. Em CSV a linha de cabeçalho não entra em
+`total_lines` nem em `invalid_lines`.
+
 ## Consulta de logs
 
 `GET /logs`

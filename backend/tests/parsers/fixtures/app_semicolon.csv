@@ -1,0 +1,4 @@
+date;severity;logger;msg
+2026-10-05T14:03:22Z;ERROR;checkout.api;"card declined; payment 9c2e1f"
+1791209003250;Information;checkout.api;request completed
+2026-10-05T14:03:24Z;FATAL;checkout.worker;out of memory in worker 7

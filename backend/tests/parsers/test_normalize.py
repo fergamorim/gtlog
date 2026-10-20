@@ -8,6 +8,7 @@ from app.parsers.normalize import (
     clean_text,
     level_from_http_status,
     month_number,
+    parse_epoch,
     parse_iso_timestamp,
     to_utc,
 )
@@ -116,3 +117,18 @@ def test_month_number(raw, number):
 
 def test_category_names_fit_column():
     assert all(len(name) <= 50 for name, _ in CATEGORY_RULES)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (1791209003, datetime(2026, 10, 5, 14, 3, 23, tzinfo=UTC)),
+        (1791209003.5, datetime(2026, 10, 5, 14, 3, 23, 500000, tzinfo=UTC)),
+        (1791209003250, datetime(2026, 10, 5, 14, 3, 23, 250000, tzinfo=UTC)),  # milliseconds
+        (1e300, None),
+        (float("nan"), None),
+        (float("inf"), None),
+    ],
+)
+def test_parse_epoch(value, expected):
+    assert parse_epoch(value) == expected

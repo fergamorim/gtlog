@@ -3,12 +3,14 @@
 Usage:
     python scripts/generate_logs.py --lines 200000 --format text --out samples/app.log
     python scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
+    python scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
 
 A small share of lines is deliberately malformed so the importer's
 validation and error reporting can be exercised.
 """
 
 import argparse
+import csv
 import json
 import random
 from datetime import datetime, timedelta, timezone
@@ -41,7 +43,7 @@ def render(level: str, svc: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lines", type=int, default=100_000)
-    parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--format", choices=["text", "json", "csv"], default="text")
     parser.add_argument("--days", type=int, default=14, help="time span covered by the logs")
     parser.add_argument("--invalid-ratio", type=float, default=0.005)
     parser.add_argument("--out", type=Path, required=True)
@@ -53,7 +55,10 @@ def main() -> None:
     start = datetime.now(timezone.utc) - timedelta(days=args.days)
     step = timedelta(days=args.days) / max(args.lines, 1)
 
-    with args.out.open("w", encoding="utf-8") as f:
+    with args.out.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        if args.format == "csv":
+            writer.writerow(["timestamp", "level", "service", "message"])
         for i in range(args.lines):
             if random.random() < args.invalid_ratio:
                 f.write("@@ corrupted line without structure @@\n")
@@ -62,7 +67,9 @@ def main() -> None:
             level = random.choices(LEVELS, LEVEL_WEIGHTS)[0]
             svc = random.choice(SERVICES)
             msg = render(level, svc)
-            if args.format == "json":
+            if args.format == "csv":
+                writer.writerow([ts.isoformat(), level, svc, msg])
+            elif args.format == "json":
                 f.write(json.dumps({"timestamp": ts.isoformat(), "level": level, "service": svc, "message": msg}) + "\n")
             else:
                 f.write(f"{ts.isoformat()} {level} [{svc}] {msg}\n")

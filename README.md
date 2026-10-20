@@ -129,7 +129,7 @@ Variáveis de ambiente:
 | Variável | Padrão | Uso |
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog` | Conexão da API |
-| `UPLOAD_MAX_MB` | `200` | Tamanho máximo do upload |
+| `UPLOAD_MAX_MB` | `1024` | Tamanho máximo do upload, em MB |
 | `CORS_ORIGINS` | `http://localhost:5173` | Origens permitidas, separadas por vírgula |
 | `VITE_API_URL` | `http://localhost:8000` | URL da API usada pelo frontend (no build) |
 | `TEST_DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog_test` | Banco dos testes do backend |

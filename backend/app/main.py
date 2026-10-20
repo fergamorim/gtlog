@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.schema import CreateIndex
 
 from app import models  # noqa: F401  (registers tables on Base.metadata)
@@ -14,6 +15,10 @@ from app.api.stats import router as stats_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
 
+# Columns added after the first release. create_all skips existing tables, so a database created by an
+# older version (a kept `pgdata` volume) would otherwise fail every query that selects them.
+_ADDED_COLUMNS = ("ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS format VARCHAR(30)",)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -22,6 +27,8 @@ async def lifespan(_: FastAPI):
     # create_all skips existing tables, so add indexes introduced later. IF NOT EXISTS (instead of
     # check-then-create) keeps concurrent workers from failing with DuplicateTable.
     with engine.begin() as conn:
+        for statement in _ADDED_COLUMNS:
+            conn.execute(text(statement))
         for table in Base.metadata.sorted_tables:
             for index in table.indexes:
                 conn.execute(CreateIndex(index, if_not_exists=True))

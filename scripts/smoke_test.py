@@ -105,6 +105,7 @@ def main() -> None:
         expected_lines = sum(1 for line in f if line.strip())
 
     wait_until_healthy(args.api, args.timeout)
+    fail("falha proposital: PR de teste da proteção de branch, não mergear")
 
     job = upload(args.api, args.log)
     job = wait_for_import(args.api, job["id"], args.timeout)

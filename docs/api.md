@@ -15,7 +15,7 @@ Job:
 
 ```json
 {"id": 1, "filename": "app.log", "status": "PENDING|PROCESSING|DONE|FAILED", "format": "text",
- "total_lines": 200000, "parsed_lines": 198964, "invalid_lines": 1036, "error": null,
+ "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992, "error": null,
  "created_at": "...", "finished_at": "..."}
 ```
 
@@ -135,7 +135,7 @@ Resposta:
 
 ```json
 {
-  "total": 198964,
+  "total": 199008,
   "by_level": {"DEBUG": 29000, "INFO": 119000, "WARNING": 30000, "ERROR": 16000, "CRITICAL": 4000},
   "error_rate": 0.1005,
   "first_timestamp": "...", "last_timestamp": "...",

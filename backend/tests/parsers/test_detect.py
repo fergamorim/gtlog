@@ -71,3 +71,46 @@ def test_generator_output_is_detected_and_parsed(tmp_path, fmt):
     assert all(r.timestamp.tzinfo is UTC for r in results if r is not None)
     categories = {r.category for r in results if r is not None}
     assert categories >= {"timeout", "database", "auth", "payment", "memory", "disk"}
+
+
+@pytest.mark.parametrize("scenario", ["app", "k8s", "ssh", "wordpress", "events"])
+def test_generator_scenarios_are_parsed(tmp_path, scenario):
+    out = tmp_path / f"{scenario}.log"
+    subprocess.run(
+        [sys.executable, str(GENERATOR), "--lines", "1500", "--scenario", scenario, "--invalid-ratio", "0",
+         "--out", str(out)],
+        check=True, capture_output=True,
+    )
+    lines = out.read_text(encoding="utf-8").splitlines()
+    parser = detect_parser(lines[:200])
+    assert parser is not None and parser.name == "text"
+    results = [parser.parse(line) for line in lines]
+    assert all(r is not None for r in results)
+    assert {r.level.name for r in results} >= {"INFO", "WARNING", "ERROR"}
+
+
+def test_generator_http_format_is_an_access_log_with_attack_status_codes(tmp_path):
+    out = tmp_path / "access.log"
+    subprocess.run(
+        [sys.executable, str(GENERATOR), "--lines", "3000", "--format", "http", "--out", str(out)],
+        check=True, capture_output=True,
+    )
+    lines = out.read_text(encoding="utf-8").splitlines()
+    parser = detect_parser(lines[:200])
+    assert parser is not None and parser.name == "http"
+    results = [r for r in map(parser.parse, lines) if r is not None]
+    assert len(results) == sum(not line.startswith("@@") for line in lines)
+    assert {r.status_code for r in results} >= {200, 404, 503}
+
+
+@pytest.mark.parametrize("fmt", ["json", "csv"])
+def test_generator_writes_the_status_code_as_a_field(tmp_path, fmt):
+    out = tmp_path / f"sample.{fmt}"
+    subprocess.run(
+        [sys.executable, str(GENERATOR), "--lines", "2000", "--format", fmt, "--out", str(out)],
+        check=True, capture_output=True,
+    )
+    lines = out.read_text(encoding="utf-8").splitlines()
+    parser = detect_parser(lines[:200])
+    codes = {r.status_code for r in map(parser.parse, lines) if r is not None}
+    assert codes >= {200, 500, 503}

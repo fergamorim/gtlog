@@ -80,7 +80,25 @@ exercitar a contagem de linhas inválidas.
 python3 scripts/generate_logs.py --lines 200000 --out samples/app.log
 python3 scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
 python3 scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
+python3 scripts/generate_logs.py --lines 50000 --format http --out samples/access.log
+python3 scripts/generate_logs.py --lines 20000 --scenario ssh --out samples/ssh.log
 ```
+
+As mensagens imitam sistemas reais, inspiradas em massas públicas de logs. `--scenario` escolhe a origem (padrão
+`mixed`, todas juntas):
+
+| Cenário | O que gera |
+| --- | --- |
+| `app` | Aplicação web (pagamentos, catálogo, login, jobs, consultas lentas, falta de memória e disco). |
+| `k8s` | Pods Kubernetes: health checks, transações, `OOMKilled`, `CrashLoopBackOff`, `ImagePullBackOff`, deadlock, 502/503 e picos de latência. |
+| `ssh` | `sshd`: logins aceitos e recusados, sessões PAM e rajadas de força bruta (usuários inválidos e senhas de root) vindas do mesmo IP. |
+| `wordpress` | Site WordPress sob DDoS de pingback (xmlrpc): rajadas de `503` com user agent `WordPress/x.y; site`, rate limit e falhas de login. |
+| `events` | App Flask com SDK de eventos: `INCOMING_REQUEST`, `DB_QUERY`, `ROUTING_ERROR` 404, `SERVER_ERROR` 500 e erros de banco. |
+
+Ataques e incidentes saem em rajadas (linhas seguidas com a mesma origem), como acontece de verdade. Mensagens com
+código HTTP trazem `status=NNN`, que vira o código da linha; em JSON e CSV ele também vai num campo `status`.
+`--format http` gera access log no formato combined do Apache/Nginx, com tráfego normal, varreduras (`/.env`,
+`/wp-login.php`) e o flood de pingback.
 
 Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005), `--seed` (padrão 42) e
 `--follow N` (depois de gerar, continua acrescentando N linhas por segundo; veja
@@ -97,7 +115,7 @@ curl "http://localhost:8000/stats"
 ```
 
 Exemplo de job concluído para 200 mil linhas geradas:
-`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 198964, "invalid_lines": 1036`.
+`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992`.
 
 ## Observar um arquivo de log em tempo real
 

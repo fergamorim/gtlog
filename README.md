@@ -221,6 +221,29 @@ npm run lint
 npm run build   # checagem de tipos + build de produção
 ```
 
+Integração (stack completa no Docker): importa um log de verdade pela API e confere `/logs`, `/stats`, paginação por
+cursor, CORS e o frontend servido pelo Nginx.
+
+```bash
+python3 scripts/generate_logs.py --lines 5000 --seed 42 --out samples/ci.log
+docker compose up -d --build --wait
+python3 scripts/smoke_test.py --log samples/ci.log
+```
+
+### CI (GitHub Actions)
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) roda em todo pull request para a `main` e em todo
+push na `main`, com três jobs em paralelo:
+
+| Job | O que roda |
+| --- | --- |
+| Backend (lint e testes) | `ruff check` e `pytest` contra um Postgres 16 de serviço |
+| Frontend (lint, testes e build) | `npm run lint`, `npm test` e `npm run build` |
+| Integração (docker compose) | build das imagens, `docker compose up` e `scripts/smoke_test.py` |
+
+O job **CI ok** só passa quando os três passam. Ele é o check obrigatório da regra de proteção da `main`, então
+uma PR só pode ser mergeada com todos os pipelines verdes.
+
 ## Formatos de log suportados
 
 O formato é detectado pelas primeiras 200 linhas não vazias; vence o parser que reconhece mais linhas.

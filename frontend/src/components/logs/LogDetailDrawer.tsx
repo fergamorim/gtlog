@@ -6,6 +6,7 @@ import { formatTimestamp } from '../../lib/format'
 import type { LogFilters } from '../../lib/filters'
 import { Drawer } from '../ui/Drawer'
 import { Icon } from '../ui/Icon'
+import { HttpStatus } from '../ui/HttpStatus'
 import { LevelBadge } from '../ui/LevelBadge'
 import { ErrorState } from '../ui/StateViews'
 
@@ -72,6 +73,8 @@ function LogDetails({ log, onFilter }: { log: LogEntry; onFilter: LogDetailDrawe
           <time dateTime={log.timestamp}>{formatTimestamp(log.timestamp)}</time>
           <div className="card__hint mono">{log.timestamp}</div>
         </dd>
+        <dt>Código HTTP</dt>
+        <dd><HttpStatus code={log.status_code} /></dd>
         <dt>Serviço</dt>
         <dd>{log.service ?? '—'}</dd>
         <dt>Categoria</dt>
@@ -98,6 +101,11 @@ function LogDetails({ log, onFilter }: { log: LogEntry; onFilter: LogDetailDrawe
         <button type="button" className="btn btn--sm" onClick={() => onFilter({ level: [log.level] })}>
           <Icon name="filter" /> Só nível {log.level}
         </button>
+        {log.status_code != null && (
+          <button type="button" className="btn btn--sm" onClick={() => onFilter({ status: [String(log.status_code)] })}>
+            <Icon name="filter" /> Só o código {log.status_code}
+          </button>
+        )}
         <button type="button" className="btn btn--sm" onClick={() => onFilter({ importId: log.import_id })}>
           <Icon name="filter" /> Só a importação #{log.import_id}
         </button>

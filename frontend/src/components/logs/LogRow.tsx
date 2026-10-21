@@ -1,6 +1,7 @@
 import { memo, type KeyboardEvent } from 'react'
 import type { LogEntry } from '../../api/types'
 import { formatTimestamp } from '../../lib/format'
+import { HttpStatus } from '../ui/HttpStatus'
 import { LevelBadge } from '../ui/LevelBadge'
 
 interface RowProps {
@@ -38,6 +39,7 @@ export const LogRow = memo(function LogRow({ entry, index, start, active, onOpen
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </span>
       <span role="cell" className="cell"><LevelBadge level={entry.level} /></span>
+      <span role="cell" className="cell"><HttpStatus code={entry.status_code} /></span>
       <span role="cell" className="cell">{entry.service ?? '—'}</span>
       <span role="cell" className="cell cell--muted">{entry.category ?? '—'}</span>
       <span role="cell" className="cell cell--msg" title={entry.message}>{entry.message}</span>
@@ -60,7 +62,10 @@ export const LogCard = memo(function LogCard({ entry, index, start, active, onOp
       onKeyDown={(event) => openOnKey(event, open)}
     >
       <span className="log-card__top">
-        <LevelBadge level={entry.level} />
+        <span className="log-card__badges">
+          <LevelBadge level={entry.level} />
+          {entry.status_code != null && <HttpStatus code={entry.status_code} />}
+        </span>
         <time className="log-card__time" dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </span>
       <span className="log-card__meta">

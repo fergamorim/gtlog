@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Icon } from '../ui/Icon'
 
 interface MultiSelectProps {
@@ -9,10 +9,12 @@ interface MultiSelectProps {
   loading?: boolean
   error?: boolean
   onRetry?: () => void
+  /** Custom option content (e.g. a code plus its level); the option string is still used for search. */
+  renderOption?: (option: string) => ReactNode
 }
 
 /** Dropdown with checkboxes; shows a search box when there are many options. */
-export function MultiSelect({ label, options, value, onChange, loading, error, onRetry }: MultiSelectProps) {
+export function MultiSelect({ label, options, value, onChange, loading, error, onRetry, renderOption }: MultiSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -93,7 +95,7 @@ export function MultiSelect({ label, options, value, onChange, loading, error, o
                 <li key={option}>
                   <label className="multiselect__option">
                     <input type="checkbox" checked={value.includes(option)} onChange={() => toggle(option)} />
-                    {option}
+                    {renderOption ? renderOption(option) : option}
                   </label>
                 </li>
               ))}

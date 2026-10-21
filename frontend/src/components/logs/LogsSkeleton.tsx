@@ -8,6 +8,7 @@ export function LogsSkeleton() {
         <div className="skeleton-row" key={i} aria-hidden="true">
           <span className="skeleton" style={{ width: '80%' }} />
           <span className="skeleton" style={{ width: 56, height: 18, borderRadius: 999 }} />
+          <span className="skeleton" style={{ width: 32 }} />
           <span className="skeleton" style={{ width: '70%' }} />
           <span className="skeleton" style={{ width: '60%' }} />
           <span className="skeleton" style={{ width }} />

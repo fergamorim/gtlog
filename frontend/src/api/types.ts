@@ -26,6 +26,8 @@ export interface LogEntry {
   level: Level
   service: string | null
   category: string | null
+  /** HTTP status code of the line, or null when it has none. */
+  status_code: number | null
   message: string
   raw: string
 }
@@ -42,6 +44,7 @@ export interface LogCount {
 export interface Facets {
   services: string[]
   categories: string[]
+  status_codes: number[]
 }
 
 export type Bucket = 'hour' | 'day'

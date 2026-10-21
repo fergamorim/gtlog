@@ -6,10 +6,12 @@ from app.models.log import LogLevel
 from app.parsers import CATEGORY_RULES, classify_category, normalize_level
 from app.parsers.normalize import (
     clean_text,
-    level_from_http_status,
+    find_status_code,
+    level_from_status_code,
     month_number,
     parse_epoch,
     parse_iso_timestamp,
+    parse_status_code,
     to_utc,
 )
 
@@ -43,12 +45,92 @@ def test_normalize_level_unknown(raw):
 
 
 @pytest.mark.parametrize(
-    ("status", "level"),
-    [(200, LogLevel.INFO), (301, LogLevel.INFO), (404, LogLevel.WARNING), (499, LogLevel.WARNING),
-     (500, LogLevel.ERROR), (503, LogLevel.ERROR)],
+    ("code", "level"),
+    [
+        (100, LogLevel.DEBUG),
+        (101, LogLevel.DEBUG),
+        (199, LogLevel.DEBUG),
+        (200, LogLevel.INFO),
+        (201, LogLevel.INFO),
+        (204, LogLevel.INFO),
+        (301, LogLevel.INFO),
+        (304, LogLevel.INFO),
+        (400, LogLevel.WARNING),
+        (401, LogLevel.WARNING),
+        (403, LogLevel.WARNING),
+        (404, LogLevel.WARNING),
+        (429, LogLevel.WARNING),
+        (499, LogLevel.WARNING),
+        (500, LogLevel.ERROR),
+        (501, LogLevel.ERROR),
+        (502, LogLevel.CRITICAL),
+        (503, LogLevel.CRITICAL),
+        (504, LogLevel.CRITICAL),
+        (505, LogLevel.ERROR),
+        (599, LogLevel.ERROR),
+    ],
 )
-def test_level_from_http_status(status, level):
-    assert level_from_http_status(status) is level
+def test_level_from_status_code_follows_the_documented_table(code, level):
+    assert level_from_status_code(code) is level
+
+
+@pytest.mark.parametrize(
+    ("value", "code"),
+    [
+        (404, 404),
+        (100, 100),
+        (599, 599),
+        (404.0, 404),
+        ("404", 404),
+        (" 503 ", 503),
+        ("404.0", 404),
+        ("200.00", 200),
+        (99, None),
+        (600, None),
+        (0, None),
+        (-404, None),
+        (404.5, None),
+        (float("nan"), None),
+        ("404.5", None),
+        ("4041", None),
+        ("abc", None),
+        ("ok", None),
+        ("", None),
+        ("1e2", None),
+        ("+404", None),
+        (True, None),
+        (None, None),
+        ([404], None),
+    ],
+)
+def test_parse_status_code(value, code):
+    assert parse_status_code(value) == code
+
+
+@pytest.mark.parametrize(
+    ("message", "code"),
+    [
+        ("GET /api/orders status=404 in 12ms", 404),
+        ("upstream responded status: 503", 503),
+        ("STATUS=500 internal error", 500),
+        ("request done status_code=200", 200),
+        ("proxy http_status=502 from catalog", 502),
+        ("statusCode=401 missing token", 401),
+        ("response_code: 429 rate limited", 429),
+        ('response {"status":"404"}', None),  # a JSON key in quotes is not a key=value pair
+        ('status="404" path=/x', 404),
+        ("status=999 then status=201", 201),
+        ("upstream_status=502 from nginx", None),
+        ("status=2000 items", None),
+        ("status=20 ms", None),
+        ("status=200ms", None),
+        ("status ok after 404 retries", None),
+        ("order status changed to shipped", None),
+        ("", None),
+    ],
+)
+def test_find_status_code(message, code):
+    assert find_status_code(message) == code
 
 
 def test_to_utc_assumes_naive_is_utc_and_converts_offsets():
@@ -61,8 +143,13 @@ def test_to_utc_assumes_naive_is_utc_and_converts_offsets():
 
 @pytest.mark.parametrize(
     "raw",
-    ["2026-10-05T14:00:00Z", "2026-10-05T14:00:00+00:00", "2026-10-05 14:00:00", "2026-10-05T11:00:00-03:00",
-     "2026-10-05T16:00:00+0200"],
+    [
+        "2026-10-05T14:00:00Z",
+        "2026-10-05T14:00:00+00:00",
+        "2026-10-05 14:00:00",
+        "2026-10-05T11:00:00-03:00",
+        "2026-10-05T16:00:00+0200",
+    ],
 )
 def test_parse_iso_timestamp_variants(raw):
     assert parse_iso_timestamp(raw) == datetime(2026, 10, 5, 14, 0, tzinfo=UTC)

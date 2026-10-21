@@ -37,12 +37,26 @@ def test_epoch_seconds_and_crit_alias(fixture_lines):
 
 @pytest.mark.parametrize(
     ("level", "expected"),
-    [(10, LogLevel.DEBUG), (20, LogLevel.DEBUG), (30, LogLevel.INFO), (40, LogLevel.WARNING),
-     (50, LogLevel.ERROR), (60, LogLevel.CRITICAL)],
+    [
+        (10, LogLevel.DEBUG),
+        (20, LogLevel.DEBUG),
+        (30, LogLevel.INFO),
+        (40, LogLevel.WARNING),
+        (50, LogLevel.ERROR),
+        (60, LogLevel.CRITICAL),
+    ],
 )
 def test_pino_numeric_levels(level, expected):
-    line = json.dumps({"level": level, "time": 1791209003250, "pid": 41, "hostname": "api-7d9f",
-                       "name": "checkout", "msg": "request completed"})
+    line = json.dumps(
+        {
+            "level": level,
+            "time": 1791209003250,
+            "pid": 41,
+            "hostname": "api-7d9f",
+            "name": "checkout",
+            "msg": "request completed",
+        }
+    )
     parsed = json_lines.parse(line)
     assert parsed is not None
     assert parsed.level is expected
@@ -101,9 +115,49 @@ def test_deeply_nested_object_does_not_raise():
 
 def test_generator_output_round_trips():
     ts = datetime(2026, 10, 5, 14, 3, 22, tzinfo=UTC)
-    line = json.dumps({"timestamp": ts.isoformat(), "level": "CRITICAL", "service": "player",
-                       "message": "out of memory in worker 7"})
+    line = json.dumps(
+        {
+            "timestamp": ts.isoformat(),
+            "level": "CRITICAL",
+            "service": "player",
+            "message": "out of memory in worker 7",
+        }
+    )
     parsed = json_lines.parse(line)
     assert parsed is not None
     assert parsed.timestamp == ts
     assert parsed.category == "memory"
+
+
+@pytest.mark.parametrize(
+    ("index", "code", "level"),
+    [
+        (0, 503, LogLevel.CRITICAL),  # no level: it comes from the code
+        (1, 503, LogLevel.INFO),  # an explicit level wins over the code
+        (2, 401, LogLevel.WARNING),  # statusCode as a string
+        (3, 404, LogLevel.WARNING),  # "status": "shipped" is skipped, http_status 404.0 is used
+        (4, None, LogLevel.INFO),  # only a non-HTTP status: no code, default level
+        (5, 101, LogLevel.DEBUG),  # response_code
+        (6, None, LogLevel.INFO),  # 1000 is not an HTTP code
+    ],
+)
+def test_status_code_keys_and_level_fallback(fixture_lines, index, code, level):
+    parsed = json_lines.parse(fixture_lines("status.jsonl")[index])
+    assert parsed is not None
+    assert parsed.status_code == code
+    assert parsed.level is level
+
+
+def test_line_without_status_has_no_code(fixture_lines):
+    parsed = json_lines.parse(fixture_lines("app.jsonl")[0])
+    assert parsed is not None
+    assert parsed.status_code is None
+
+
+@pytest.mark.parametrize("value", [True, "4o4", 404.5, -1, [404], {"code": 404}])
+def test_non_http_status_values_are_ignored(value):
+    line = json.dumps({"timestamp": "2026-10-05T14:03:22Z", "status": value, "message": "m"})
+    parsed = json_lines.parse(line)
+    assert parsed is not None
+    assert parsed.status_code is None
+    assert parsed.level is LogLevel.INFO

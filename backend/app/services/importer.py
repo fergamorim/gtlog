@@ -127,6 +127,7 @@ def _run(db: Session, job_id: int, path: str) -> None:
                     entry.message[:MAX_TEXT_CHARS],
                     entry.service,
                     entry.category,
+                    entry.status_code,
                     line[:MAX_TEXT_CHARS],
                 )
             )
@@ -147,7 +148,7 @@ def _read_lines(path: str) -> Iterator[str]:
                 yield line
 
 
-_COPY_COLUMNS = ("import_id", "timestamp", "level", "message", "service", "category", "raw")
+_COPY_COLUMNS = ("import_id", "timestamp", "level", "message", "service", "category", "status_code", "raw")
 _COPY_SQL = f"COPY {LogEntry.__tablename__} ({', '.join(_COPY_COLUMNS)}) FROM STDIN"
 
 

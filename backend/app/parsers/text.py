@@ -7,13 +7,14 @@ Accepted shapes (``[service]`` is optional in the first three)::
     2026-10-19T10:00:00Z ERROR: card declined
     2026-10-19 10:00:00,123 - payments.api - ERROR - card declined   (Python logging; service = logger)
 
-The timestamp is ISO 8601 or ``YYYY-MM-DD HH:MM:SS[,ms]``.
+The timestamp is ISO 8601 or ``YYYY-MM-DD HH:MM:SS[,ms]``. A ``status=404``-style
+pair in the message sets the HTTP status code; the line's own level is kept.
 """
 
 import re
 
 from app.parsers.base import ParsedLine
-from app.parsers.normalize import build, normalize_level, parse_iso_timestamp
+from app.parsers.normalize import build, find_status_code, normalize_level, parse_iso_timestamp
 
 name = "text"
 
@@ -25,9 +26,7 @@ _LINE = re.compile(
     + r"\s+(?:\[(?P<service>[^\]]*)\]\s*)?"
     + r"(?P<message>\S.*)$"
 )
-_PYTHON_LOGGING = re.compile(
-    _TS + r" - (?P<service>\S+) - (?P<level>[A-Za-z]+) - (?P<message>\S.*)$"
-)
+_PYTHON_LOGGING = re.compile(_TS + r" - (?P<service>\S+) - (?P<level>[A-Za-z]+) - (?P<message>\S.*)$")
 
 
 def parse(line: str) -> ParsedLine | None:
@@ -40,4 +39,5 @@ def parse(line: str) -> ParsedLine | None:
     timestamp = parse_iso_timestamp(match["ts"])
     if level is None or timestamp is None:
         return None
-    return build(timestamp, level, match["message"], match["service"])
+    message = match["message"]
+    return build(timestamp, level, message, match["service"], status_code=find_status_code(message))

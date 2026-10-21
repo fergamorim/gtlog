@@ -255,3 +255,31 @@ def test_timestamp_column_found_by_name_suffix(name):
 def test_known_timestamp_name_wins_over_suffix():
     _, results = parse_all(["closed_at,timestamp,msg", "2020-01-01T00:00:00Z,2026-10-05T14:03:22Z,ok"])
     assert results[1].timestamp == datetime(2026, 10, 5, 14, 3, 22, tzinfo=UTC)
+
+
+def test_status_column_sets_code_and_fallback_level(fixture_lines):
+    _, results = parse_all(fixture_lines("status.csv"))
+    assert results[0] is None  # header
+    assert [(r.status_code, r.level) for r in results[1:]] == [
+        (502, LogLevel.CRITICAL),  # empty level: from the code
+        (500, LogLevel.INFO),  # explicit level wins
+        (404, LogLevel.WARNING),  # "404.0" as exported by spreadsheets
+        (None, LogLevel.INFO),  # N/A
+        (None, LogLevel.INFO),  # not an HTTP code
+    ]
+    assert results[1].message == "POST /api/payments bad gateway"
+
+
+def test_status_column_stays_in_built_message(fixture_lines):
+    _, results = parse_all(fixture_lines("status_nomessage.csv"))
+    parsed = results[1]
+    assert parsed is not None
+    assert parsed.status_code == 429
+    assert parsed.level is LogLevel.WARNING
+    assert parsed.service == "web01"
+    assert parsed.message == "status=429 bytes=0"
+
+
+def test_files_without_status_column_have_no_code(fixture_lines):
+    _, results = parse_all(fixture_lines("app.csv"))
+    assert all(r.status_code is None for r in results if r is not None)

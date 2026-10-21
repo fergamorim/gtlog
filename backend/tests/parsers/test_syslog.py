@@ -133,3 +133,19 @@ def test_rfc5424_nil_app_name_and_bom():
 )
 def test_rejects_malformed_lines(line):
     assert syslog.parse(line) is None
+
+
+@pytest.mark.parametrize(
+    ("index", "code", "level"),
+    [
+        (0, 500, LogLevel.INFO),  # PRI severity wins over the code
+        (1, 503, LogLevel.CRITICAL),  # no PRI: the level comes from the code
+        (2, 503, LogLevel.INFO),
+        (3, None, LogLevel.INFO),  # no PRI and no code
+    ],
+)
+def test_status_code_from_message(parser, fixture_lines, index, code, level):
+    parsed = parser.parse(fixture_lines("status_syslog.log")[index])
+    assert parsed is not None
+    assert parsed.status_code == code
+    assert parsed.level is level

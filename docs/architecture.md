@@ -1,19 +1,69 @@
 # Arquitetura
 
+## Visão geral
+
+O GTLog tem três serviços no Docker Compose: o frontend (`web`), a API (`api`) e o banco (`db`). O navegador só
+fala com a API, por HTTP/JSON; a API é a única que acessa o banco. Os logs chegam por dois caminhos, e os dois
+terminam no mesmo parser e no mesmo `COPY`:
+
+- **Upload**: o usuário envia um arquivo pela tela Importar (ou `POST /imports`) e ele é processado em segundo plano.
+- **Observação em tempo real**: uma thread da API relê, no intervalo escolhido, arquivos de uma pasta do host
+  montada só para leitura em `/watch`, e importa só as linhas novas.
+
+```mermaid
+flowchart LR
+    subgraph Navegador
+        UI["React SPA<br/>Dashboard · Logs · Importar"]
+        N[Notificações do navegador<br/>alertas de CRITICAL]
+    end
+    subgraph DC["Docker Compose"]
+        WEB["web<br/>Nginx :5173"]
+        subgraph API["api · FastAPI :8000"]
+            R["Rotas<br/>imports · logs · stats · watches · health"]
+            BG[Importação em segundo plano<br/>BackgroundTasks]
+            WS["WatchScheduler<br/>thread, verifica a cada 1 s"]
+            P["Parsers<br/>texto · JSON · HTTP · syslog · CSV"]
+        end
+        DB[("db · PostgreSQL 16<br/>import_jobs · log_entries · log_watches")]
+    end
+    HOST["Pasta do host<br/>GTLOG_WATCH_DIR, só leitura em /watch"]
+
+    WEB -->|HTML, JS, CSS| UI
+    UI -->|HTTP/JSON| R
+    UI --> N
+    R -->|upload| BG
+    BG --> P
+    WS -->|lê só o que cresceu| HOST
+    WS --> P
+    P -->|COPY em lotes| DB
+    R -->|consultas com cursor<br/>e agregações| DB
+```
+
+Princípios que guiam o desenho (detalhes e alternativas em [decisions.md](decisions.md)):
+
+- **Um banco só, sem filas nem buscador externo.** O PostgreSQL faz armazenamento, full-text (`tsvector` + GIN) e
+  agregações (`date_bin`). Menos peças para subir e para manter consistentes.
+- **Ingestão em lotes com `COPY`**, no mesmo caminho para upload e observação, com progresso e contadores gravados
+  na mesma transação de cada lote.
+- **Consulta por cursor (keyset)**, nunca `OFFSET`, para que a página 1.000 custe o mesmo que a primeira.
+- **Os mesmos filtros em tudo**: tabela, contagem, facetas e dashboard usam o mesmo construtor de condições.
+- **Frontend como SPA estática** com o estado do servidor no TanStack Query e os filtros na URL.
+
 ## Componentes
 
 | Componente | Tecnologia | Responsabilidade |
 | --- | --- | --- |
 | `web` | React 18 + TypeScript + Vite, servido por Nginx (porta 5173 → 80) | Telas de Dashboard, Logs e Importar. SPA estática; o Nginx só serve arquivos e faz fallback para `index.html`. |
-| `api` | FastAPI + SQLAlchemy 2 + psycopg 3 (porta 8000) | Upload, processamento em segundo plano, consulta, facetas e estatísticas. |
+| `api` | FastAPI + SQLAlchemy 2 + psycopg 3 (porta 8000) | Upload, processamento em segundo plano, observação de arquivos em tempo real, consulta, facetas e estatísticas. |
 | `db` | PostgreSQL 16 | Armazenamento, índices, full-text e agregações. |
 
 O backend é dividido em camadas, cada uma chamando só a de baixo:
 
 - `app/api`: rotas, validação de parâmetros e schemas de resposta (Pydantic). Não contém regra de negócio.
-- `app/services`: `importer` (upload e ingestão), `log_query` (filtros, cursor, facetas) e `stats` (agregações).
+- `app/services`: `importer` (upload e ingestão), `log_query` (filtros, cursor, facetas), `stats` (agregações) e
+  `watcher` (agendador e leitura incremental dos arquivos observados).
 - `app/parsers`: funções puras que transformam uma linha de texto em `ParsedLine` e não acessam o banco.
-- `app/models`: tabelas `import_jobs` e `log_entries` e seus índices.
+- `app/models`: tabelas `import_jobs`, `log_entries` e `log_watches` e seus índices.
 
 O contrato entre parsers e importador é `ParsedLine` (`app/parsers/base.py`). O contrato entre backend e frontend é
 [docs/api.md](api.md).
@@ -29,7 +79,7 @@ flowchart LR
     R -.->|BackgroundTasks| BG[importer.process_import]
     TMP --> BG
     BG -->|200 primeiras linhas| DET[detect_parser]
-    DET --> P[parser: text / json / http / syslog]
+    DET --> P[parser: text / json / http / syslog / csv]
     P -->|ParsedLine + categoria| BG
     BG -->|COPY em lotes de 5.000<br/>+ contadores do job, 1 commit por lote| DB[(PostgreSQL<br/>log_entries / import_jobs)]
     UP -->|GET /imports/id a cada 1 s| R
@@ -100,9 +150,29 @@ observações ativas com `next_check_at` vencido e chama `poll_watch` para cada 
    gravado e a próxima leitura repete o trecho, sem duplicar linhas.
 
 Se sobrou conteúdo (mais de 16 MB de atraso), a observação fica vencida de novo e é lida no próximo segundo; senão
-volta depois de `interval_seconds`. O frontend consulta `GET /watches` a cada 3 s enquanto houver observação ativa
-e, quando os contadores sobem, atualiza contagem, dashboard e facetas. A tabela de logs só é recarregada se o usuário
+volta depois de `interval_seconds`. O frontend (`useWatchActivity`, montado em `App`) consulta `GET /watches` a cada 3 s
+enquanto houver observação ativa e, quando os contadores sobem, atualiza contagem, dashboard e facetas. A tabela de logs só é recarregada se o usuário
 estiver na primeira página, para não tirar a rolagem de quem está lendo registros mais antigos.
+
+O arquivo é escolhido pelo seletor da tela Importar, que navega a pasta compartilhada por `GET /watches/files` (o
+seletor nativo do navegador não revela o caminho do arquivo, e a API precisa dele para reler). Também é aceito o
+caminho completo do host quando a pasta veio de `GTLOG_WATCH_DIR`: a API troca o prefixo `WATCH_HOST_ROOT` por
+`WATCH_ROOT` antes de validar.
+
+### Alertas de erros críticos
+
+A cada leitura, `poll_watch` soma em `critical_lines` as linhas `CRITICAL` gravadas e guarda a última mensagem e o
+horário. Não há Web Push nem servidor de notificações: o próprio frontend compara `critical_lines` entre duas
+consultas a `GET /watches` (`useCriticalAlerts`) e, quando o número cresce, mostra três avisos ao mesmo tempo:
+
+1. uma notificação do navegador (API `Notification`), com permissão pedida pelo botão **Ativar alertas**;
+2. um alerta no canto da página, para quando o sistema esconde a notificação (Foco, permissões do macOS);
+3. a contagem no título da aba (`(2) GTLog`) enquanto ela estiver em segundo plano.
+
+Com os alertas ativos, a consulta continua mesmo com a aba oculta. A primeira contagem de cada observação só vira
+referência depois que ela alcança o fim do arquivo, para não anunciar como novos os `CRITICAL` que o arquivo já tinha
+ao ser observado ou ao recarregar a página. Clicar no alerta abre `/logs` filtrado pela importação da observação e
+pelo nível `CRITICAL`.
 
 ## Paginação por cursor
 
@@ -143,10 +213,14 @@ tsquery. Além disso, o texto sempre vai como parâmetro ligado (bind), nunca co
 
 ## Estatísticas
 
-`/stats` faz uma única varredura agrupada por `date_bin('1 hour', timestamp)` e nível, que gera ao mesmo tempo os
-totais por nível, a série temporal e o primeiro e último timestamp. Quando o modo automático escolhe `day`
-(intervalo acima de 3 dias), as horas são somadas em dias na aplicação, sem uma segunda consulta. Buckets vazios
-são preenchidos com zero (até 10.000 buckets). Top serviços, top categorias e erros mais frequentes são consultas
+`/stats` faz uma única varredura agrupada por `date_bin(<bucket>, timestamp)` e nível, que gera ao mesmo tempo os
+totais por nível, a série temporal e o primeiro e último timestamp. O bucket (segundo, minuto, hora ou dia) é
+escolhido pelo tamanho do período: o filtrado ou, sem `start`/`end`, o dos dados (um `min`/`max` que sai do índice de
+timestamp). Vale o mais fino que cabe: `second` até 5 minutos, `minute` até 3 horas, `hour` até 3 dias, senão
+`day`. Um bucket pedido explicitamente que daria 10.000 pontos ou mais é trocado pelo próximo maior, e a resposta
+informa qual foi usado. O `date_bin` usa origem em 2000-01-01 UTC, então as fronteiras são sempre em UTC e iguais às
+que a aplicação usa para preencher buckets vazios com zero. Com `start`/`end`, o preenchimento cobre o período
+inteiro (um dia por hora sempre devolve 24 pontos), o que alimenta o painel "Volume por hora em um dia". Top serviços, top categorias e erros mais frequentes são consultas
 `GROUP BY ... LIMIT 10`. Nos erros, os números da mensagem são trocados por `#` (`regexp_replace`), para juntar
 variações como `timeout calling auth after #ms`.
 
@@ -164,6 +238,10 @@ variações como `timeout calling auth after #ms`.
 - **Virtualização**: `@tanstack/react-virtual` renderiza só as linhas visíveis, mesmo com milhares carregadas. Perto
   do fim da lista, a próxima página é buscada (scroll infinito). Abaixo do breakpoint compacto, as linhas viram
   cartões e a tabela continua virtualizada.
+- **Dashboard**: o gráfico "Volume ao longo do tempo" usa o bucket que a API devolver. Arrastar sobre ele seleciona
+  um trecho e vira um filtro de período (`start`/`end` na URL), então a API responde com um bucket mais fino, até
+  segundos; **Ver todo o período** desfaz o zoom. O painel "Volume por hora em um dia" pede um dia escolhido no
+  calendário com `bucket=hour` e mostra as 24 horas. Os horários dos gráficos e da tabela são exibidos em UTC.
 - **Code splitting**: as três páginas são `lazy`. O Recharts fica só no chunk do dashboard, então a tela de logs
   não o baixa.
 - **Estilo**: CSS próprio com variáveis (`frontend/src/index.css`), com tema claro/escuro via `data-theme`.

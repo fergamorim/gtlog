@@ -39,7 +39,8 @@ const MAX_ALERTS = 3
 /**
  * Alerts when a watch reads new CRITICAL lines, while any GTLog tab is open: a system notification, an
  * in-page alert (for when the system hides the notification) and the unread count in the tab title.
- * Counts first seen are the baseline, so reloading the page does not repeat old alerts.
+ * Counts first seen once a watch caught up are the baseline, so reloading the page or creating a watch on a
+ * file that already has CRITICAL lines does not announce old ones.
  */
 export function useCriticalAlerts() {
   const { enabled } = useAlertSettings()
@@ -69,7 +70,13 @@ export function useCriticalAlerts() {
       setAlerts((current) => [...fresh, ...current.filter((alert) => !ids.has(alert.watchId))].slice(0, MAX_ALERTS))
       if (document.hidden) setUnread((count) => count + fresh.length)
     }
-    previous.current = new Map(data.map((watch) => [watch.id, watch.critical_lines]))
+    // A watch's baseline is taken once it has caught up with its file, so the CRITICAL lines the file
+    // already had (imported by the first polls after it is created) are not announced as new.
+    previous.current = new Map(
+      data
+        .filter((watch) => previous.current.has(watch.id) || caughtUp(watch))
+        .map((watch) => [watch.id, watch.critical_lines]),
+    )
   }, [data, navigate])
 
   const clearUnread = useCallback(() => setUnread(0), [])
@@ -77,6 +84,14 @@ export function useCriticalAlerts() {
 
   const dismiss = useCallback((watchId: number) => setAlerts((current) => current.filter((alert) => alert.watchId !== watchId)), [])
   return { alerts, dismiss }
+}
+
+/**
+ * Read up to the end of its file: polled at least once, and not rescheduled right away (the API sets
+ * next_check_at to the poll time itself while a backlog is still being drained).
+ */
+export function caughtUp(watch: LogWatch): boolean {
+  return watch.last_checked_at != null && new Date(watch.next_check_at) > new Date(watch.last_checked_at)
 }
 
 /** "(2) GTLog" in the tab title while alerts arrived in a hidden tab; cleared when the tab is shown. */

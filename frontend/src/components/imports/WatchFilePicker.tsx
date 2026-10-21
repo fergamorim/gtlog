@@ -43,34 +43,38 @@ export function WatchFilePicker({ rootLabel, onPick, onClose }: WatchFilePickerP
         <p role="status" className="card__hint inline-status"><span className="spinner" aria-hidden="true" /> Carregando…</p>
       ) : isError ? (
         <ErrorState error={error} title="Não foi possível abrir a pasta" onRetry={() => refetch()} retrying={isFetching} />
-      ) : !data.entries.length ? (
-        <EmptyState title="Pasta vazia" text="Não há arquivos nem subpastas aqui." icon="file" />
       ) : (
-        <ul className="picker__list" aria-label="Conteúdo da pasta">
-          {data.parent != null && (
-            <li>
-              <button type="button" className="picker__item" onClick={() => setPath(data.parent ?? '')}>
-                <Icon name="folder" /> <span className="picker__name">..</span>
-              </button>
-            </li>
+        <>
+          {(data.parent != null || data.entries.length > 0) && (
+            <ul className="picker__list" aria-label="Conteúdo da pasta">
+              {data.parent != null && (
+                <li>
+                  <button type="button" className="picker__item" onClick={() => setPath(data.parent ?? '')}>
+                    <Icon name="folder" /> <span className="picker__name">..</span>
+                  </button>
+                </li>
+              )}
+              {data.entries.map((entry) => (
+                <li key={entry.path}>
+                  <button
+                    type="button"
+                    className="picker__item"
+                    onClick={() => (entry.is_dir ? setPath(entry.path) : onPick(entry.path))}
+                    aria-label={entry.is_dir ? `Abrir pasta ${entry.name}` : `Selecionar ${entry.name}`}
+                  >
+                    <Icon name={entry.is_dir ? 'folder' : 'file'} />
+                    <span className="picker__name">{entry.name}</span>
+                    <span className="picker__meta">
+                      {entry.size != null && formatBytes(entry.size)} {formatDateTime(entry.modified_at)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
-          {data.entries.map((entry) => (
-            <li key={entry.path}>
-              <button
-                type="button"
-                className="picker__item"
-                onClick={() => (entry.is_dir ? setPath(entry.path) : onPick(entry.path))}
-                aria-label={entry.is_dir ? `Abrir pasta ${entry.name}` : `Selecionar ${entry.name}`}
-              >
-                <Icon name={entry.is_dir ? 'folder' : 'file'} />
-                <span className="picker__name">{entry.name}</span>
-                <span className="picker__meta">
-                  {entry.size != null && formatBytes(entry.size)} {formatDateTime(entry.modified_at)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+          {/* The ".." entry stays above, so an empty subfolder can still be left the usual way. */}
+          {!data.entries.length && <EmptyState title="Pasta vazia" text="Não há arquivos nem subpastas aqui." icon="file" />}
+        </>
       )}
     </Drawer>
   )

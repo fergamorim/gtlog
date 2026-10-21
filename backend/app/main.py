@@ -17,14 +17,18 @@ from app.core.config import get_settings
 from app.core.database import Base, engine
 from app.services.watcher import WatchScheduler
 
-# Columns added after the first release. create_all skips existing tables, so a database created by an
-# older version (a kept `pgdata` volume) would otherwise fail every query that selects them.
+# Columns added after the first release, and data fixes the indexes below rely on. create_all skips
+# existing tables, so a database created by an older version (a kept `pgdata` volume) would otherwise
+# fail every query that selects them.
 _ADDED_COLUMNS = (
     "ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS format VARCHAR(30)",
     "ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS status_code SMALLINT",
     "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS critical_lines INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS last_critical_message TEXT",
     "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS last_critical_at TIMESTAMPTZ",
+    # Before ux_watch_active_path exists, a race could leave two active watches of a file: keep the oldest.
+    "UPDATE log_watches w SET active = false WHERE active AND EXISTS "
+    "(SELECT 1 FROM log_watches o WHERE o.active AND o.path = w.path AND o.id < w.id)",
 )
 
 

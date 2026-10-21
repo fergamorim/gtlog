@@ -1,3 +1,5 @@
+import type { Bucket } from '../api/types'
+
 // Formatters are created once: Intl constructors are expensive and the table formats thousands of rows.
 const LOCALE = 'pt-BR'
 // Every date is shown in UTC, the zone the API stores and buckets in. Log files often carry no zone
@@ -55,15 +57,13 @@ export function shiftDay(day: string, delta: number): string {
   return new Date(toDate(`${day}T00:00:00Z`).getTime() + delta * 86_400_000).toISOString().slice(0, 10)
 }
 
-export type BucketSize = 'second' | 'minute' | 'hour' | 'day'
-
 /** Length of each bucket in milliseconds. */
-export const BUCKET_MS: Record<BucketSize, number> = { second: 1000, minute: 60_000, hour: 3_600_000, day: 86_400_000 }
+export const BUCKET_MS: Record<Bucket, number> = { second: 1000, minute: 60_000, hour: 3_600_000, day: 86_400_000 }
 /** "segundo", "minuto"... for "Por minuto (UTC)". */
-export const BUCKET_LABEL: Record<BucketSize, string> = { second: 'segundo', minute: 'minuto', hour: 'hora', day: 'dia' }
+export const BUCKET_LABEL: Record<Bucket, string> = { second: 'segundo', minute: 'minuto', hour: 'hora', day: 'dia' }
 
 /** Tooltip title for a bucket: the full date, with seconds when buckets are seconds. */
-export function formatBucketTitle(value: string, bucket: BucketSize): string {
+export function formatBucketTitle(value: string, bucket: Bucket): string {
   if (bucket === 'second') return dateTimeSeconds.format(toDate(value))
   if (bucket === 'day') return shortDateYear.format(toDate(value))
   return dateTime.format(toDate(value))
@@ -73,7 +73,7 @@ export function formatBucketTitle(value: string, bucket: BucketSize): string {
  * Axis label for a time bucket: "05/10" or, with the year, "05/10/26" (day); "05/10, 17:00" (hour and minute);
  * "17:46:57" (second).
  */
-export function formatBucket(value: string, bucket: BucketSize, withYear = false): string {
+export function formatBucket(value: string, bucket: Bucket, withYear = false): string {
   if (bucket === 'second') return clock.format(toDate(value))
   if (bucket === 'hour' || bucket === 'minute') return shortDateHour.format(toDate(value))
   return (withYear ? shortDateYear : shortDate).format(toDate(value))

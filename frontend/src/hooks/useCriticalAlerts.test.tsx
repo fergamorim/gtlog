@@ -12,10 +12,11 @@ import { setAlertsOptedIn } from '../lib/alerts'
 import { json, mockFetch, renderWithProviders } from '../test/utils'
 import { useCriticalAlerts } from './useCriticalAlerts'
 
-const watch = (critical: number, message: string | null = null): LogWatch => ({
+const watch = (critical: number, message: string | null = null, overrides: Partial<LogWatch> = {}): LogWatch => ({
   id: 4, path: 'live.log', interval_seconds: 5, active: true, import_id: 9, format: 'text', offset: 0,
   parsed_lines: 10, invalid_lines: 0, last_error: null, critical_lines: critical, last_critical_message: message,
-  last_critical_at: null, created_at: '2026-10-05T17:00:00Z', last_checked_at: null, next_check_at: '2026-10-05T17:00:00Z',
+  last_critical_at: null, created_at: '2026-10-05T17:00:00Z', last_checked_at: '2026-10-05T17:00:00Z',
+  next_check_at: '2026-10-05T17:00:05Z', ...overrides,
 })
 
 /** A fake Notification class that records what was shown. */
@@ -98,6 +99,25 @@ describe('useCriticalAlerts', () => {
     expect(hook.result.current.alerts.map((alert) => alert.title)).toEqual(['Erro crítico em live.log'])
     act(() => hook.result.current.dismiss(4))
     expect(hook.result.current.alerts).toEqual([])
+  })
+
+  it('does not announce the CRITICAL lines a file already had when its watch is created', async () => {
+    const { shown } = stubNotifications('granted')
+    setAlertsOptedIn(true)
+    // Just created: never read (what the create response puts in the cache).
+    const { client, next } = setup(watch(0, null, { last_checked_at: null }))
+    await waitFor(() => expect(client.getQueryData<LogWatch[]>(queryKeys.watches)).toHaveLength(1))
+
+    // First poll, more than one poll's worth: due again right away, still catching up.
+    // act flushes each render, so the hook sees every poll and not just the last one.
+    await act(() => next(watch(300, 'old', { next_check_at: '2026-10-05T17:00:00Z' })))
+    // Caught up with the file: the existing 500 lines become the baseline.
+    await act(() => next(watch(500, 'old')))
+    expect(shown).toHaveLength(0)
+
+    await next(watch(501, 'new one'))
+    await waitFor(() => expect(shown).toHaveLength(1))
+    expect(shown[0].title).toBe('Erro crítico em live.log')
   })
 
   it('counts alerts of a hidden tab in the title until the tab is shown again', async () => {

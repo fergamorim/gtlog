@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models import LogLevel
-from app.services.stats import pick_bucket
+from app.services.stats import fit_bucket, pick_bucket
 from tests.test_logs import ROWS_A, ROWS_B, STATUS_ROWS, entry
 
 LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -170,6 +170,32 @@ def test_explicit_bucket(client, dataset):
     response = client.get("/stats", params={"bucket": "week"})
     assert response.status_code == 422
     assert response.json() == {"detail": "Valor inválido para o parâmetro 'bucket'."}
+
+
+def test_explicit_fine_bucket_is_coarsened_over_a_long_period(client, dataset):
+    # 5 hours of data: 18,000 seconds is over the cap, 300 minutes is not.
+    stats = get_stats(client, bucket="second")
+    assert stats["bucket"] == "minute"
+    assert len(stats["timeseries"]) < 10_000
+
+    stats = get_stats(client, start="2000-01-01T00:00:00Z", bucket="minute")
+    assert stats["bucket"] == "day"
+
+
+@pytest.mark.parametrize(
+    ("bucket", "span", "expected"),
+    [
+        ("second", None, "second"),
+        ("second", timedelta(minutes=30), "second"),
+        ("second", timedelta(hours=2), "second"),
+        ("second", timedelta(hours=3), "minute"),
+        ("minute", timedelta(days=6), "minute"),
+        ("minute", timedelta(days=7), "hour"),
+        ("hour", timedelta(days=500), "day"),
+    ],
+)
+def test_fit_bucket_keeps_the_point_count_bounded(bucket, span, expected):
+    assert fit_bucket(bucket, span) == expected
 
 
 def test_stats_validates_range(client):

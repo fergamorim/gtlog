@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import BinaryIO
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -48,6 +49,7 @@ CRITICAL_MESSAGE_CHARS = 500
 TICK_SECONDS = 1.0
 LIST_FOLDER_LIMIT = 1000
 DUE_LIMIT = 20
+DUPLICATE_DETAIL = "Este arquivo já está sendo observado."
 
 
 class WatchRejected(Exception):
@@ -96,31 +98,38 @@ def list_folder(path: str = "") -> tuple[str, list[dict]]:
     joined, resolved = _inside_root(path or ".")
     if not os.path.isdir(resolved):
         raise WatchRejected(404, f"Pasta não encontrada: {path}.")
-    entries = []
+    found = []
     with os.scandir(resolved) as items:
         for item in items:
             if item.name.startswith("."):
                 continue
             try:
                 # Follows symlinks: a link leaving the root is listed but refused when picked.
+                # The type usually comes from the directory listing itself, without a stat per entry.
                 is_dir = item.is_dir()
-                stat = item.stat()
+                if is_dir or item.is_file():
+                    found.append((is_dir, item))
             except OSError:
                 continue
-            if not is_dir and not item.is_file():
-                continue
-            entries.append(
-                {
-                    "name": item.name,
-                    "path": os.path.relpath(os.path.join(joined, item.name), watch_root()),
-                    "is_dir": is_dir,
-                    "size": None if is_dir else stat.st_size,
-                    "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC),
-                }
-            )
-    entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()))
+    # Sort and cut first, so a folder with thousands of files only pays a stat for the entries returned.
+    found.sort(key=lambda pair: (not pair[0], pair[1].name.lower()))
+    entries = []
+    for is_dir, item in found[:LIST_FOLDER_LIMIT]:
+        try:
+            stat = item.stat()
+        except OSError:
+            continue
+        entries.append(
+            {
+                "name": item.name,
+                "path": os.path.relpath(os.path.join(joined, item.name), watch_root()),
+                "is_dir": is_dir,
+                "size": None if is_dir else stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC),
+            }
+        )
     folder = os.path.relpath(joined, watch_root())
-    return ("" if folder == "." else folder), entries[:LIST_FOLDER_LIMIT]
+    return ("" if folder == "." else folder), entries
 
 
 def resolve_path(path: str) -> tuple[str, str]:
@@ -128,21 +137,20 @@ def resolve_path(path: str) -> tuple[str, str]:
 
     Raises WatchRejected when the path leaves the root or is not a readable regular file.
     """
-    root = watch_root()
-    candidate = _from_host(path.strip())
+    candidate = path.strip()
     joined, resolved = _inside_root(candidate)
     if not os.path.isfile(resolved):
         raise WatchRejected(404, f"Arquivo não encontrado: {candidate}.")
     if not os.access(resolved, os.R_OK):
         raise WatchRejected(422, f"Sem permissão para ler o arquivo: {candidate}.")
-    return os.path.relpath(joined, root), resolved
+    return os.path.relpath(joined, watch_root()), resolved
 
 
 def create_watch(db: Session, path: str, interval_seconds: int, start_at_end: bool = False) -> LogWatch:
     relative, resolved = resolve_path(path)
     duplicate = db.scalar(select(LogWatch.id).where(LogWatch.path == relative, LogWatch.active.is_(True)))
     if duplicate is not None:
-        raise WatchRejected(409, "Este arquivo já está sendo observado.")
+        raise WatchRejected(409, DUPLICATE_DETAIL)
     with open(resolved, "rb") as fh:
         if b"\x00" in fh.read(SNIFF_SIZE):
             raise WatchRejected(415, "O arquivo parece ser binário. Indique um log em texto.")
@@ -170,9 +178,18 @@ def create_watch(db: Session, path: str, interval_seconds: int, start_at_end: bo
         next_check_at=datetime.now(UTC),
     )
     db.add(watch)
-    db.commit()
+    _commit_unique(db)
     db.refresh(watch)
     return watch
+
+
+def _commit_unique(db: Session) -> None:
+    """Commit; a concurrent request that activated the same file first (ux_watch_active_path) -> 409."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise WatchRejected(409, DUPLICATE_DETAIL) from None
 
 
 def list_watches(db: Session) -> list[LogWatch]:
@@ -192,7 +209,7 @@ def update_watch(db: Session, watch: LogWatch, active: bool | None, interval_sec
                 )
             )
             if duplicate is not None:
-                raise WatchRejected(409, "Este arquivo já está sendo observado.")
+                raise WatchRejected(409, DUPLICATE_DETAIL)
             # Resuming reads right away what was appended while paused.
             watch.next_check_at = datetime.now(UTC)
         watch.active = active
@@ -201,7 +218,7 @@ def update_watch(db: Session, watch: LogWatch, active: bool | None, interval_sec
         # Reschedule from the last read, so a shorter interval applies now instead of after the old one.
         base = watch.last_checked_at or datetime.now(UTC)
         watch.next_check_at = min(watch.next_check_at, base + timedelta(seconds=interval_seconds))
-    db.commit()
+    _commit_unique(db)
     db.refresh(watch)
     return watch
 
@@ -284,18 +301,22 @@ def _read_new_lines(db: Session, watch: LogWatch) -> bool:
             watch.last_error = None
             return True
 
+        fh.seek(watch.offset)
+        data = fh.read(MAX_POLL_BYTES)
+        consumed = _complete_lines(data)
+        if consumed == 0:
+            watch.last_error = None
+            return True
+
+        # Detected only once a complete line exists: a half-written first line (a cut CSV header) would stick.
         parser = _parser_for(watch, fh)
         if parser is None:
             # Keep the offset: once the file has recognizable lines, they are imported from the start.
             watch.last_error = "Formato de log não reconhecido."
             return True
-
-        fh.seek(watch.offset)
-        data = fh.read(MAX_POLL_BYTES)
-    consumed = _complete_lines(data)
-    if consumed == 0:
-        watch.last_error = None
-        return True
+        # Fingerprinted through this same handle, so it is the file the imported bytes came from.
+        fh.seek(0)
+        head = fh.read(min(watch.offset + consumed, HEAD_BYTES)) if watch.head_size < HEAD_BYTES else None
     text = data[:consumed].decode("utf-8", errors="replace")
     if watch.offset == 0:
         text = text.removeprefix("﻿")
@@ -338,9 +359,8 @@ def _read_new_lines(db: Session, watch: LogWatch) -> bool:
         watch.last_critical_at = last_critical.timestamp
     watch.offset += consumed
     watch.last_error = None
-    if watch.head_size < HEAD_BYTES:
-        with open(resolved, "rb") as fh:
-            _remember_head(watch, fh)
+    if head is not None:
+        watch.head_size, watch.head_digest = len(head), hashlib.sha256(head).hexdigest()
     return watch.offset >= stat.st_size
 
 
@@ -350,11 +370,6 @@ def _same_head(watch: LogWatch, fh: BinaryIO) -> bool:
         return True
     fh.seek(0)
     return hashlib.sha256(fh.read(watch.head_size)).hexdigest() == watch.head_digest
-
-
-def _remember_head(watch: LogWatch, fh: BinaryIO) -> None:
-    head = fh.read(min(watch.offset, HEAD_BYTES))
-    watch.head_size, watch.head_digest = len(head), hashlib.sha256(head).hexdigest()
 
 
 def _end_of_last_line(fh: BinaryIO, size: int) -> int:

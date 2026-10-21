@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from 'recharts'
 import { LEVELS, type Bucket, type Level, type TimeseriesPoint } from '../../api/types'
-import { formatBucket, formatCompact, formatDateTime, formatNumber, spansYears } from '../../lib/format'
+import { formatBucket, formatCompact, formatDateTime, formatHour, formatNumber, spansYears } from '../../lib/format'
 import { LEVEL_META, LEVELS_BY_SEVERITY, levelVars } from '../../lib/levels'
 import { ChartTooltip } from './ChartTooltip'
 
@@ -10,12 +10,14 @@ interface TimeseriesChartProps {
   bucket: Bucket
   /** Opens the logs of one bucket. */
   onSelectBucket: (bucketStart: string) => void
+  /** The points cover a single day: label the axis with the hour only. */
+  singleDay?: boolean
 }
 
 /** Most severe at the bottom of the stack so errors sit on the baseline and stay readable. */
 const STACK_ORDER = LEVELS_BY_SEVERITY
 
-export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChartProps) {
+export function TimeseriesChart({ data, bucket, onSelectBucket, singleDay = false }: TimeseriesChartProps) {
   const [hidden, setHidden] = useState<Set<Level>>(() => new Set())
   const withYear = bucket === 'day' && spansYears(data.map((point) => point.bucket))
   const toggle = (level: Level) =>
@@ -56,7 +58,7 @@ export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChar
             <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
             <XAxis
               dataKey="bucket"
-              tickFormatter={(value: string) => formatBucket(value, bucket, withYear)}
+              tickFormatter={(value: string) => (singleDay ? formatHour(value) : formatBucket(value, bucket, withYear))}
               stroke="var(--chart-axis)"
               tick={{ fill: 'var(--chart-axis)' }}
               tickLine={false}

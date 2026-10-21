@@ -16,6 +16,7 @@ AUTO_HOUR_MAX_RANGE = timedelta(days=3)
 BUCKET_STEP: dict[str, timedelta] = {"hour": timedelta(hours=1), "day": timedelta(days=1)}
 # Gap filling is skipped beyond this many buckets so a huge span cannot blow up the response.
 MAX_FILLED_BUCKETS = 10_000
+BUCKET_ORIGIN = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 def compute_stats(db: Session, filters: LogFilters, bucket: Bucket | None = None) -> dict:
@@ -50,7 +51,7 @@ def compute_stats(db: Session, filters: LogFilters, bucket: Bucket | None = None
         "first_timestamp": first,
         "last_timestamp": last,
         "bucket": bucket,
-        "timeseries": _fill_gaps(series, bucket),
+        "timeseries": _fill_gaps(series, bucket, filters.start, filters.end),
         "by_service": _by_service(db, conditions),
         "by_category": _by_category(db, conditions),
         "top_errors": _top_errors(db, conditions),
@@ -113,12 +114,31 @@ def _roll_up_to_days(series: dict[datetime, dict[str, int]]) -> dict[datetime, d
     return days
 
 
-def _fill_gaps(series: dict[datetime, dict[str, int]], bucket: Bucket) -> list[dict]:
-    """One object per bucket from the first to the last, with every level key (zeros included)."""
+def _floor(value: datetime, step: timedelta) -> datetime:
+    """Start of the UTC hour/day holding value (same boundaries as date_bin in _timeseries)."""
+    return BUCKET_ORIGIN + (value - BUCKET_ORIGIN) // step * step
+
+
+def _fill_gaps(
+    series: dict[datetime, dict[str, int]],
+    bucket: Bucket,
+    span_start: datetime | None = None,
+    span_end: datetime | None = None,
+) -> list[dict]:
+    """One object per bucket, with every level key (zeros included).
+
+    Covers the filtered period when it has bounds (a day by hour gives all 24 hours), otherwise
+    the first to the last bucket with data.
+    """
     if not series:
         return []
-    start, end = min(series), max(series)
     step = BUCKET_STEP[bucket]
+    start, end = min(series), max(series)
+    if span_start is not None:
+        start = min(start, _floor(span_start, step))
+    if span_end is not None:
+        # end is exclusive: the last bucket is the one holding the instant just before it.
+        end = max(end, _floor(span_end - timedelta(microseconds=1), step))
     steps = (end - start) // step
     keys = sorted(series) if steps >= MAX_FILLED_BUCKETS else [start + i * step for i in range(steps + 1)]
     zeros = {level.value: 0 for level in LogLevel}

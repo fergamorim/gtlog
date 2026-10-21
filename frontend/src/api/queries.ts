@@ -9,7 +9,7 @@ import {
 import { useEffect, useMemo, useRef } from 'react'
 import { toParams, type FilterKey, type LogFilters } from '../lib/filters'
 import { api } from './client'
-import type { ImportJob, ImportStatus, LogEntry, LogPage, LogWatch, LogWatchInput } from './types'
+import type { Bucket, ImportJob, ImportStatus, LogEntry, LogPage, LogWatch, LogWatchInput } from './types'
 
 export const LOGS_PAGE_SIZE = 200
 
@@ -252,8 +252,10 @@ export function useFacets() {
 
 /* -------------------------------- Stats --------------------------------- */
 
-export function useStats(filters: LogFilters, keys?: FilterKey[]) {
-  const params = useFilterParams(filters, keys)
+/** Dashboard aggregates; `bucket` forces hourly or daily points (default: picked by the API from the period). */
+export function useStats(filters: LogFilters, keys?: FilterKey[], bucket?: Bucket) {
+  const filterParams = useFilterParams(filters, keys)
+  const params = bucket ? `${filterParams}${filterParams ? '&' : ''}bucket=${bucket}` : filterParams
   return useQuery({
     queryKey: queryKeys.stats(params),
     queryFn: ({ signal }) => api.getStats(new URLSearchParams(params), signal),

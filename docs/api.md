@@ -15,7 +15,7 @@ Job:
 
 ```json
 {"id": 1, "filename": "app.log", "status": "PENDING|PROCESSING|DONE|FAILED", "format": "text",
- "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992, "error": null,
+ "total_lines": 200000, "parsed_lines": 199036, "invalid_lines": 964, "error": null,
  "created_at": "...", "finished_at": "..."}
 ```
 
@@ -135,7 +135,7 @@ Resposta:
 
 ```json
 {
-  "total": 199008,
+  "total": 199036,
   "by_level": {"DEBUG": 29000, "INFO": 119000, "WARNING": 30000, "ERROR": 16000, "CRITICAL": 4000},
   "error_rate": 0.1005,
   "first_timestamp": "...", "last_timestamp": "...",
@@ -148,7 +148,9 @@ Resposta:
 ```
 
 - `error_rate` = (ERROR + CRITICAL) / total, arredondado a 4 casas; 0 quando não há registros.
-- `timeseries`: um objeto por bucket (UTC) do primeiro ao último com dados, buckets vazios com zeros.
+- `timeseries`: um objeto por bucket (UTC), buckets vazios com zeros. Com `start`/`end`, cobre o período inteiro
+  (`start=2026-10-05T00:00:00Z&end=2026-10-06T00:00:00Z&bucket=hour` devolve as 24 horas do dia); sem eles, vai do
+  primeiro ao último bucket com dados. O dashboard usa isso no painel "Volume por hora em um dia".
   O intervalo do modo automático é `start`/`end` do filtro ou, na falta deles, o primeiro/último registro.
 - `by_service` e `by_category`: top 10 por total (empate por nome; valores nulos ficam de fora). `top_errors`: top 10 mensagens de nível ERROR/CRITICAL,
   agrupadas após trocar números por `#` (ex.: `timeout calling auth after #ms`), para juntar variações.

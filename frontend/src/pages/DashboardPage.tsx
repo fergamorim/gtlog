@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStats } from '../api/queries'
+import { HourlyVolume } from '../components/dashboard/HourlyVolume'
 import { CategoriesChart, ServicesChart } from '../components/dashboard/RankingCharts'
 import { KpiTiles } from '../components/dashboard/KpiTiles'
 import { LevelDistribution } from '../components/dashboard/LevelDistribution'
@@ -64,6 +65,16 @@ export function DashboardPage() {
               }
             />
           </Panel>
+          {data.first_timestamp && data.last_timestamp && (
+            <Panel className="span-2" title="Volume por hora em um dia" hint="Escolha o dia (UTC) · clique em uma hora para abrir os logs">
+              <HourlyVolume
+                filters={base}
+                firstTimestamp={data.first_timestamp}
+                lastTimestamp={data.last_timestamp}
+                onSelectHour={(start, end) => openLogs({ start, end })}
+              />
+            </Panel>
+          )}
           <Panel title="Distribuição por nível" hint="Clique para filtrar">
             <LevelDistribution counts={data.by_level} total={data.total} onSelect={(level) => openLogs({ level: [level] })} />
           </Panel>

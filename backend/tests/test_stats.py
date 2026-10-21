@@ -77,10 +77,13 @@ def test_stats_apply_filters(client, dataset):
 
 def test_bucket_follows_filter_range(client, dataset):
     # A range longer than 3 days switches to daily buckets even though the data spans hours.
+    # The series covers the whole filtered period, empty days included.
     stats = get_stats(client, start="2026-10-01T00:00:00Z", end="2026-10-08T00:00:00Z")
     assert stats["bucket"] == "day"
     assert stats["timeseries"] == [
+        point(f"2026-10-0{day}T00:00:00Z") if day != 5 else
         point("2026-10-05T00:00:00Z", DEBUG=1, INFO=2, WARNING=1, ERROR=3, CRITICAL=1)
+        for day in range(1, 8)
     ]
 
     stats = get_stats(client, start="2026-10-05T00:00:00Z", end="2026-10-08T00:00:00Z")
@@ -97,6 +100,20 @@ def test_auto_bucket_uses_data_span_without_range(client, seed):
     stats = get_stats(client, bucket="hour")
     assert stats["bucket"] == "hour"
     assert len(stats["timeseries"]) == 24 * 4 + 1
+
+
+def test_one_day_by_hour_has_all_24_hours(client, dataset):
+    stats = get_stats(client, start="2026-10-05T00:00:00Z", end="2026-10-06T00:00:00Z", bucket="hour")
+    buckets = [p["bucket"] for p in stats["timeseries"]]
+    assert buckets == [f"2026-10-05T{hour:02d}:00:00Z" for hour in range(24)]
+    assert sum(sum(p[level] for level in LEVELS) for p in stats["timeseries"]) == stats["total"]
+
+
+def test_filled_period_starts_at_the_bucket_holding_start(client, dataset):
+    stats = get_stats(client, start="2026-10-05T03:30:00Z", end="2026-10-05T23:59:00Z", bucket="hour")
+    buckets = [p["bucket"] for p in stats["timeseries"]]
+    assert buckets[0] == "2026-10-05T03:00:00Z"
+    assert buckets[-1] == "2026-10-05T23:00:00Z"
 
 
 def test_explicit_bucket(client, dataset):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBucket, formatDateTime, formatInterval, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
+import { dayRange, formatBucket, formatDateTime, formatDay, formatHour, formatInterval, shiftDay, utcDay, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
 
 // These hold in any machine time zone: the UI always shows UTC (run with TZ=America/Sao_Paulo to check).
 describe('dates are shown in UTC', () => {
@@ -41,5 +41,22 @@ describe('formatInterval', () => {
     [86_400, '24 h'],
   ])('formats %i seconds as %s', (seconds, text) => {
     expect(formatInterval(seconds)).toBe(text)
+  })
+})
+
+describe('day helpers (UTC)', () => {
+  it('finds the UTC day of an instant and its [start, end) range', () => {
+    expect(utcDay('2026-10-05T23:59:59-03:00')).toBe('2026-10-06')
+    expect(dayRange('2026-10-05')).toEqual({ start: '2026-10-05T00:00:00.000Z', end: '2026-10-06T00:00:00.000Z' })
+  })
+
+  it('moves across month and year ends', () => {
+    expect(shiftDay('2026-10-31', 1)).toBe('2026-11-01')
+    expect(shiftDay('2027-01-01', -1)).toBe('2026-12-31')
+  })
+
+  it('formats the day and the hour', () => {
+    expect(formatDay('2026-10-05')).toBe('05/10/2026')
+    expect(formatHour('2026-10-05T07:00:00Z')).toBe('07:00')
   })
 })

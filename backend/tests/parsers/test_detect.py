@@ -1,6 +1,6 @@
 import subprocess
 import sys
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -114,3 +114,28 @@ def test_generator_writes_the_status_code_as_a_field(tmp_path, fmt):
     parser = detect_parser(lines[:200])
     codes = {r.status_code for r in map(parser.parse, lines) if r is not None}
     assert codes >= {200, 500, 503}
+
+
+def _generate_timestamps(tmp_path, *extra):
+    out = tmp_path / "ts.log"
+    subprocess.run(
+        [sys.executable, str(GENERATOR), "--lines", "500", "--invalid-ratio", "0", "--out", str(out), *extra],
+        check=True, capture_output=True,
+    )
+    parser = detect_parser(out.read_text(encoding="utf-8").splitlines()[:200])
+    return [parser.parse(line).timestamp for line in out.read_text(encoding="utf-8").splitlines()]
+
+
+def test_generator_stamps_lines_with_the_current_time_by_default(tmp_path):
+    before = datetime.now(UTC)
+    stamps = _generate_timestamps(tmp_path)
+    after = datetime.now(UTC)
+    assert all(before - timedelta(seconds=1) <= ts <= after for ts in stamps)
+    assert stamps == sorted(stamps)
+
+
+def test_generator_days_spreads_the_lines_back_to_now(tmp_path):
+    stamps = _generate_timestamps(tmp_path, "--days", "2")
+    now = datetime.now(UTC)
+    assert now - timedelta(days=2, minutes=1) <= stamps[0] <= now - timedelta(days=1)
+    assert now - timedelta(minutes=10) <= stamps[-1] <= now

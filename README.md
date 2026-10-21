@@ -28,7 +28,7 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 | Busca textual | Full-text do Postgres na mensagem e no serviço, por prefixo (`pay` encontra `payments`). Aceita frase exata entre aspas, `or` e exclusão com `-`. |
 | Scroll infinito | Paginação por cursor (keyset), 200 registros por página, com virtualização: só as linhas visíveis ficam no DOM. |
 | Dashboard | Total, erros + críticos, taxa de erro e período coberto; distribuição por nível; top serviços (com erros em destaque) e categorias; erros mais frequentes agrupados. |
-| Tendências | Série temporal por nível, agrupada por hora (até 3 dias) ou por dia. Clicar em um ponto, nível, serviço ou erro abre a tabela já filtrada. |
+| Tendências | Série temporal por nível, agrupada por hora (até 3 dias) ou por dia, e um segundo gráfico com um dia escolhido no calendário, hora a hora. Clicar em um ponto, nível, serviço ou erro abre a tabela já filtrada. |
 
 Também: tema claro/escuro, indicador de status da API, estados de carregando/vazio/erro com "tentar novamente" e
 mensagens de erro em português.
@@ -82,7 +82,12 @@ python3 scripts/generate_logs.py --lines 50000 --format json --out samples/app.j
 python3 scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
 python3 scripts/generate_logs.py --lines 50000 --format http --out samples/access.log
 python3 scripts/generate_logs.py --lines 20000 --scenario ssh --out samples/ssh.log
+python3 scripts/generate_logs.py --lines 200000 --days 14 --out samples/historico.log
 ```
+
+Cada linha recebe o horário real do momento em que é escrita, com o fuso da máquina (`2026-10-21T11:21:52-03:00`),
+como num log de verdade; a API converte para UTC na importação. Para preencher o dashboard com histórico, use
+`--days N`: as linhas se espalham pelos últimos N dias, terminando no momento da geração.
 
 As mensagens imitam sistemas reais, inspiradas em massas públicas de logs. `--scenario` escolhe a origem (padrão
 `mixed`, todas juntas):
@@ -100,7 +105,7 @@ código HTTP trazem `status=NNN`, que vira o código da linha; em JSON e CSV ele
 `--format http` gera access log no formato combined do Apache/Nginx, com tráfego normal, varreduras (`/.env`,
 `/wp-login.php`) e o flood de pingback.
 
-Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005), `--seed` (padrão 42) e
+Opções: `--days`, `--invalid-ratio` (padrão 0.005), `--seed` (padrão 42) e
 `--follow N` (depois de gerar, continua acrescentando N linhas por segundo; veja
 [observação em tempo real](#observar-um-arquivo-de-log-em-tempo-real)).
 `samples/` está no `.gitignore`.
@@ -115,7 +120,7 @@ curl "http://localhost:8000/stats"
 ```
 
 Exemplo de job concluído para 200 mil linhas geradas:
-`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992`.
+`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 199036, "invalid_lines": 964`.
 
 ## Observar um arquivo de log em tempo real
 

@@ -14,6 +14,7 @@ class ParsedLine:
     message: str
     service: str | None = None
     category: str | None = None
+    status_code: int | None = None  # HTTP status (100..599) when the line carries one
 
 
 class LineParser(Protocol):

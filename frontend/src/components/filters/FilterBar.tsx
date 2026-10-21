@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFacets } from '../../api/queries'
 import { countActiveFilters, type FilterKey, type LogFilters } from '../../lib/filters'
+import { statusOptions } from '../../lib/status'
+import { HttpStatusOption } from '../ui/HttpStatus'
 import { Icon } from '../ui/Icon'
 import { DateRangeFilter } from './DateRangeFilter'
 import { ImportSelect } from './ImportSelect'
@@ -21,6 +23,8 @@ export function FilterBar({ filters, onChange, onClear, keys }: FilterBarProps) 
   const facets = useFacets()
   const has = (key: FilterKey) => keys.includes(key)
   const active = countActiveFilters(filters, keys)
+  const statusCodes = facets.data?.status_codes
+  const statuses = useMemo(() => statusOptions(statusCodes ?? []), [statusCodes])
 
   return (
     <section className="card filters" aria-label="Filtros">
@@ -61,6 +65,18 @@ export function FilterBar({ filters, onChange, onClear, keys }: FilterBarProps) 
               onRetry={() => facets.refetch()}
             />
           )}
+          {has('status') && (
+            <MultiSelect
+              label="Código HTTP"
+              options={statuses}
+              value={filters.status}
+              onChange={(status) => onChange({ status })}
+              loading={facets.isPending}
+              error={facets.isError}
+              onRetry={() => facets.refetch()}
+              renderOption={renderStatus}
+            />
+          )}
           {has('importId') && <ImportSelect value={filters.importId} onChange={(importId) => onChange({ importId })} />}
           <div className="filters__actions">
             <button type="button" className="btn btn--ghost" onClick={onClear} disabled={!active}>
@@ -72,3 +88,5 @@ export function FilterBar({ filters, onChange, onClear, keys }: FilterBarProps) 
     </section>
   )
 }
+
+const renderStatus = (status: string) => <HttpStatusOption status={status} />

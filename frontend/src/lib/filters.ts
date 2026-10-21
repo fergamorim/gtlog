@@ -1,10 +1,13 @@
 import { LEVELS, type Level } from '../api/types'
+import { normalizeStatus } from './status'
 
 /** Filters shared by the logs page and the dashboard. URL params use the same names as the API. */
 export interface LogFilters {
   level: Level[]
   service: string[]
   category: string[]
+  /** HTTP status codes (`404`) or classes (`4xx`). */
+  status: string[]
   importId: number | null
   /** ISO 8601 (UTC), inclusive. */
   start: string | null
@@ -19,6 +22,7 @@ export const EMPTY_FILTERS: LogFilters = {
   level: [],
   service: [],
   category: [],
+  status: [],
   importId: null,
   start: null,
   end: null,
@@ -26,10 +30,10 @@ export const EMPTY_FILTERS: LogFilters = {
 }
 
 /** URL/API parameter names owned by the filter model; other params (e.g. `log`) are preserved. */
-export const FILTER_PARAMS = ['level', 'service', 'category', 'import_id', 'start', 'end', 'q'] as const
+export const FILTER_PARAMS = ['level', 'service', 'category', 'status', 'import_id', 'start', 'end', 'q'] as const
 
 /** Filters the dashboard applies (level and text search are specific to the logs page). */
-export const DASHBOARD_FILTER_KEYS: FilterKey[] = ['service', 'category', 'importId', 'start', 'end']
+export const DASHBOARD_FILTER_KEYS: FilterKey[] = ['service', 'category', 'status', 'importId', 'start', 'end']
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter(Boolean))]
@@ -46,6 +50,7 @@ export function parseFilters(params: URLSearchParams): LogFilters {
     level: LEVELS.filter((level) => params.getAll('level').some((v) => v.toUpperCase() === level)),
     service: unique(params.getAll('service')),
     category: unique(params.getAll('category')),
+    status: unique(params.getAll('status').map((v) => normalizeStatus(v) ?? '')),
     importId: Number.isInteger(importId) && importId > 0 ? importId : null,
     start: parseDate(params.get('start')),
     end: parseDate(params.get('end')),
@@ -60,6 +65,7 @@ export function toParams(filters: LogFilters, keys?: FilterKey[]): URLSearchPara
   if (include('level')) filters.level.forEach((v) => params.append('level', v))
   if (include('service')) filters.service.forEach((v) => params.append('service', v))
   if (include('category')) filters.category.forEach((v) => params.append('category', v))
+  if (include('status')) filters.status.forEach((v) => params.append('status', v))
   if (include('importId') && filters.importId != null) params.set('import_id', String(filters.importId))
   if (include('start') && filters.start) params.set('start', filters.start)
   if (include('end') && filters.end) params.set('end', filters.end)
@@ -81,6 +87,7 @@ export function countActiveFilters(filters: LogFilters, keys?: FilterKey[]): num
   if (include('level') && filters.level.length) count++
   if (include('service') && filters.service.length) count++
   if (include('category') && filters.category.length) count++
+  if (include('status') && filters.status.length) count++
   if (include('importId') && filters.importId != null) count++
   if ((include('start') && filters.start) || (include('end') && filters.end)) count++
   if (include('q') && filters.q) count++

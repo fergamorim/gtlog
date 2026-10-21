@@ -17,9 +17,13 @@ every field searchable.
 Timestamps are ISO 8601, epoch seconds/milliseconds or day-first
 ``d/m/yyyy [H:MM[:SS]]`` (as exported in Brazil and Europe). Levels accept
 the usual names plus priority scales like ``1 - Critical``/``3 - Low``. An
-empty or missing level defaults to INFO; an unknown one rejects the row, as do
-a column count different from the header's and malformed quoting. Values such
-as ``?`` or ``N/A`` count as empty.
+empty or missing level comes from the status code, or is INFO without one; an
+unknown level rejects the row, as do a column count different from the
+header's and malformed quoting. Values such as ``?`` or ``N/A`` count as empty.
+
+The HTTP status code comes from a ``status``/``status_code``/``statusCode``/
+``http_status``/``response_code`` column (``404`` or ``404.0``); other values
+in it (``Closed``) leave it empty. That column also stays in a built message.
 
 The parser is stateful per file (use a fresh CsvParser for each one).
 ``is_header`` tells the importer which line was the header so it is not
@@ -34,7 +38,14 @@ from datetime import UTC, datetime
 
 from app.models.log import LogLevel
 from app.parsers.base import ParsedLine
-from app.parsers.normalize import build, normalize_level, parse_epoch, parse_iso_timestamp
+from app.parsers.normalize import (
+    build,
+    level_from_status_code,
+    normalize_level,
+    parse_epoch,
+    parse_iso_timestamp,
+    parse_status_code,
+)
 
 name = "csv"
 
@@ -59,7 +70,10 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "level": ("level", "severity", "priority", "urgency", "impact"),
     "service": ("service", "logger", "app", "source", "component", "host", "assignment_group", "category"),
     "message": ("message", "msg", "description", "short_description", "summary"),
+    "status": ("status", "status_code", "statuscode", "http_status", "response_code"),
 }
+# Columns whose value is part of a built message even though they are mapped (see _describe).
+_DESCRIBED_FIELDS = ("status",)
 _REQUIRED = ("timestamp",)
 # Without a known timestamp name, the first column named like "login_time" or "closed_at" is used.
 _TIMESTAMP_SUFFIXES = ("_at", "_time", "_ts", "_timestamp", "_date")
@@ -124,9 +138,9 @@ def _timestamp(value: str | None) -> datetime | None:
     return parse_iso_timestamp(value)
 
 
-def _level(value: str | None) -> LogLevel | None:
+def _level(value: str | None, status_code: int | None) -> LogLevel | None:
     if value is None:
-        return LogLevel.INFO
+        return LogLevel.INFO if status_code is None else level_from_status_code(status_code)
     return normalize_level(value) or _SCALE_LEVELS.get(_SCALE_PREFIX.sub("", value).upper())
 
 
@@ -161,15 +175,17 @@ class CsvParser:
             return None
         get = {field: _value(row[index]) for field, index in self._columns.items()}
         timestamp = _timestamp(get["timestamp"])
-        level = _level(get.get("level"))
+        status_code = parse_status_code(get.get("status"))
+        level = _level(get.get("level"), status_code)
         message = get["message"] if "message" in self._columns else self._describe(row)
         if timestamp is None or level is None or not message:
             return None
-        return build(timestamp, level, message, get.get("service"))
+        return build(timestamp, level, message, get.get("service"), status_code=status_code)
 
     def _describe(self, row: list[str]) -> str:
         """Message for files without a message column: the unmapped columns as name=value pairs."""
-        used = set(self._columns.values()) if self._columns else set()
+        columns = self._columns or {}
+        used = {index for field, index in columns.items() if field not in _DESCRIBED_FIELDS}
         pairs = (
             f"{name.strip()}={value}"
             for index, (name, raw) in enumerate(zip(self._names, row, strict=True))

@@ -35,7 +35,7 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
 
   return (
     <div className="field">
-      <span className="field__label" id="period-label">Período</span>
+      <span className="field__label" id="period-label">Período (UTC)</span>
       <div className="daterange" role="group" aria-labelledby="period-label">
         <input
           className="input"

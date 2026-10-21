@@ -8,7 +8,9 @@ RFC 3164 (the ``<PRI>`` prefix is optional, as in /var/log/syslog)::
 
     <34>Oct 19 22:14:15 web01 sshd[4721]: Failed password for root from 10.0.0.5
 
-The level comes from the PRI severity (PRI % 8); without a PRI it is INFO.
+The level comes from the PRI severity (PRI % 8). A ``status=404``-style pair in
+the message sets the HTTP status code; without a PRI the level comes from that
+code, or is INFO when there is none.
 The service is the APP-NAME / TAG. RFC 3164 has no year or zone: the timestamp
 is read as UTC in the reference year, or the previous one if that would put it
 more than a day in the future (December logs read in January). The reference
@@ -20,7 +22,14 @@ from datetime import UTC, datetime, timedelta
 
 from app.models.log import LogLevel
 from app.parsers.base import ParsedLine
-from app.parsers.normalize import SYSLOG_SEVERITY, build, month_number, parse_iso_timestamp
+from app.parsers.normalize import (
+    SYSLOG_SEVERITY,
+    build,
+    find_status_code,
+    level_from_status_code,
+    month_number,
+    parse_iso_timestamp,
+)
 
 name = "syslog"
 
@@ -35,9 +44,9 @@ _RFC3164 = re.compile(
 )
 
 
-def _level(pri: str | None) -> LogLevel | None:
+def _level(pri: str | None, status_code: int | None) -> LogLevel | None:
     if pri is None:
-        return LogLevel.INFO
+        return LogLevel.INFO if status_code is None else level_from_status_code(status_code)
     value = int(pri)
     return SYSLOG_SEVERITY[value % 8] if value <= 191 else None
 
@@ -46,13 +55,14 @@ def _parse_5424(line: str) -> ParsedLine | None:
     match = _RFC5424.match(line)
     if not match:
         return None
-    level = _level(match["pri"])
     timestamp = parse_iso_timestamp(match["ts"]) if match["ts"] != "-" else None
     message = (match["msg"] or "").removeprefix("﻿")
+    status_code = find_status_code(message)
+    level = _level(match["pri"], status_code)
     if level is None or timestamp is None or not message.strip():
         return None
     app = match["app"] if match["app"] != "-" else None
-    return build(timestamp, level, message, app)
+    return build(timestamp, level, message, app, status_code=status_code)
 
 
 def _parse_3164(line: str, now: datetime) -> ParsedLine | None:
@@ -60,20 +70,26 @@ def _parse_3164(line: str, now: datetime) -> ParsedLine | None:
     month = month_number(match["month"]) if match else None
     if not match or month is None:
         return None
-    level = _level(match["pri"])
+    status_code = find_status_code(match["msg"])
+    level = _level(match["pri"], status_code)
     if level is None or not match["msg"].strip():
         return None
 
     try:
         timestamp = datetime(
-            now.year, month, int(match["day"]),
-            int(match["h"]), int(match["m"]), int(match["s"]), tzinfo=UTC,
+            now.year,
+            month,
+            int(match["day"]),
+            int(match["h"]),
+            int(match["m"]),
+            int(match["s"]),
+            tzinfo=UTC,
         )
         if timestamp > now + timedelta(days=1):
             timestamp = timestamp.replace(year=now.year - 1)
     except ValueError:  # bad day/hour, or Feb 29 outside a leap year
         return None
-    return build(timestamp, level, match["msg"], match["app"])
+    return build(timestamp, level, match["msg"], match["app"], status_code=status_code)
 
 
 class SyslogParser:

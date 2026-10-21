@@ -209,3 +209,19 @@ def test_list_returns_latest_first_limited_to_50(client):
     listed = client.get("/imports").json()
     assert len(listed) == 50
     assert [j["id"] for j in listed] == ids[::-1][:50]
+
+
+def test_status_code_is_stored(client):
+    body = "\n".join(
+        [
+            '{"timestamp": "2026-10-05T14:03:22Z", "status": 503, "message": "upstream down"}',
+            '{"timestamp": "2026-10-05T14:03:23Z", "message": "no status here"}',
+        ]
+    )
+    response = upload(client, body.encode(), name="app.jsonl")
+    job = client.get(f"/imports/{response.json()['id']}").json()
+    assert job["status"] == "DONE"
+    with SessionLocal() as db:
+        rows = db.scalars(select(LogEntry).where(LogEntry.import_id == job["id"]).order_by(LogEntry.id)).all()
+    assert [(r.status_code, r.level) for r in rows] == [(503, LogLevel.CRITICAL), (None, LogLevel.INFO)]
+    assert client.get("/logs", params={"status": "503"}).json()["items"][0]["message"] == "upstream down"

@@ -103,3 +103,25 @@ def test_long_service_is_truncated():
 )
 def test_rejects_non_matching_lines(line):
     assert text.parse(line) is None
+
+
+@pytest.mark.parametrize(
+    ("index", "code", "level"),
+    [
+        (0, 404, LogLevel.INFO),  # the line's own level is kept
+        (1, 503, LogLevel.ERROR),
+        (2, 200, LogLevel.WARNING),
+        (3, None, LogLevel.INFO),  # upstream_status is not the request's status
+    ],
+)
+def test_status_code_from_message(fixture_lines, index, code, level):
+    parsed = text.parse(fixture_lines("status.log")[index])
+    assert parsed is not None
+    assert parsed.status_code == code
+    assert parsed.level is level
+
+
+def test_line_without_status_has_no_code(fixture_lines):
+    parsed = text.parse(fixture_lines("app.log")[1])
+    assert parsed is not None
+    assert parsed.status_code is None

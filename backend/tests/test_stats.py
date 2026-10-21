@@ -1,6 +1,6 @@
 import pytest
 
-from tests.test_logs import ROWS_A, ROWS_B, entry
+from tests.test_logs import ROWS_A, ROWS_B, STATUS_ROWS, entry
 
 LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
@@ -130,3 +130,19 @@ def test_stats_on_empty_dataset(client):
         "by_category": [],
         "top_errors": [],
     }
+
+
+def test_stats_filter_by_status(client, seed):
+    seed(STATUS_ROWS)
+    stats = get_stats(client, status="5xx")
+    assert stats["total"] == 2
+    assert stats["by_level"] == {"DEBUG": 0, "INFO": 0, "WARNING": 0, "ERROR": 1, "CRITICAL": 1}
+    assert stats["error_rate"] == 1.0
+
+    stats = get_stats(client, status=["4xx", "200"], level="WARNING")
+    assert stats["total"] == 2
+    assert stats["by_service"] == [{"service": "gateway", "total": 2, "errors": 0}]
+
+    response = client.get("/stats", params={"status": "abc"})
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Valor inválido para o parâmetro 'status'."}

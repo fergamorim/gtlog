@@ -87,8 +87,9 @@ export function LogsTable(props: LogsTableProps) {
       {!compact && (
         <div role="rowgroup">
           <div role="row" aria-rowindex={1} className="logs__header">
-            <span role="columnheader">Data/hora</span>
+            <span role="columnheader">Data/hora (UTC)</span>
             <span role="columnheader">Nível</span>
+            <span role="columnheader">Código</span>
             <span role="columnheader">Serviço</span>
             <span role="columnheader">Categoria</span>
             <span role="columnheader">Mensagem</span>

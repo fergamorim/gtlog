@@ -64,6 +64,7 @@ def test_lists_all_newest_first_with_full_items(client, dataset):
         "level": "INFO",
         "service": "search",
         "category": None,
+        "status_code": None,
         "message": "request GET /api completed",
         "raw": "request GET /api completed",
     }
@@ -109,6 +110,16 @@ def test_start_must_be_before_end(client, dataset):
         ({"service": [f"s{i}" for i in range(21)]}, "Valor inválido para o parâmetro 'service'."),
         ({"level": ["INFO"] * 21}, "Valor inválido para o parâmetro 'level'."),
         ({"q": "x" * 201}, "Valor inválido para o parâmetro 'q'."),
+        ({"status": "abc"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "99"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "600"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "6xx"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "4x"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "40x"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": "404.0"}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": ""}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": ["200", "oops"]}, "Valor inválido para o parâmetro 'status'."),
+        ({"status": ["200"] * 21}, "Valor inválido para o parâmetro 'status'."),
     ],
 )
 def test_invalid_params_get_portuguese_detail(client, params, detail):
@@ -267,10 +278,98 @@ def test_facets(client, dataset):
     assert response.json() == {
         "services": ["auth", "catalog", "payments", "search"],
         "categories": ["auth", "database", "timeout"],
+        "status_codes": [],
     }
 
 
 def test_empty_dataset(client):
     assert client.get("/logs").json() == {"items": [], "next_cursor": None}
-    assert client.get("/logs/facets").json() == {"services": [], "categories": []}
+    assert client.get("/logs/facets").json() == {"services": [], "categories": [], "status_codes": []}
     assert client.get("/logs/count").json() == {"total": 0}
+
+
+def coded(minutes: int, level: str, status_code: int | None, message: str) -> dict:
+    return entry(minutes, level, "gateway", None, message) | {"status_code": status_code}
+
+
+STATUS_ROWS = [
+    coded(0, "INFO", 200, "GET / 200"),
+    coded(1, "INFO", 304, "GET /logo 304"),
+    coded(2, "WARNING", 401, "POST /login 401"),
+    coded(3, "WARNING", 404, "GET /nope 404"),
+    coded(4, "ERROR", 500, "GET /boom 500"),
+    coded(5, "CRITICAL", 503, "upstream catalog down 503"),
+    coded(6, "INFO", 404, "probe expected 404"),  # explicit level differs from the code's
+    coded(7, "ERROR", None, "worker crashed"),
+    coded(8, "DEBUG", 101, "websocket upgrade 101"),
+]
+
+
+@pytest.fixture
+def status_dataset(client, seed):
+    _, ids = seed(STATUS_ROWS, "status.log")
+    return ids
+
+
+def test_items_carry_status_code(client, status_dataset):
+    items = client.get("/logs").json()["items"]
+    assert [i["status_code"] for i in items] == [101, None, 404, 503, 500, 404, 401, 304, 200]
+    assert client.get(f"/logs/{status_dataset[4]}").json()["status_code"] == 500
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("404", [6, 3]),
+        (["404", "401"], [6, 3, 2]),
+        ("4xx", [6, 3, 2]),
+        ("4XX", [6, 3, 2]),
+        ("5xx", [5, 4]),
+        ("1xx", [8]),
+        (["2xx", "3xx"], [1, 0]),
+        (["5xx", "404"], [6, 5, 4, 3]),
+        (["503", "5xx"], [5, 4]),  # overlapping values do not duplicate rows
+        ("418", []),
+        ("599", []),
+    ],
+)
+def test_filter_by_status_exact_and_class(client, status_dataset, status, expected):
+    ids = status_dataset
+    assert ids_of(client.get("/logs", params={"status": status})) == [ids[i] for i in expected]
+
+
+def test_status_filter_leaves_out_rows_without_code(client, status_dataset):
+    every_class = ["1xx", "2xx", "3xx", "4xx", "5xx"]
+    assert status_dataset[7] not in ids_of(client.get("/logs", params={"status": every_class}))
+    assert client.get("/logs/count", params={"status": every_class}).json() == {"total": 8}
+
+
+def test_status_combined_with_level(client, status_dataset):
+    ids = status_dataset
+    # 404 with its mapped level (WARNING) and one where the line said INFO: the level filter tells them apart.
+    assert ids_of(client.get("/logs", params={"status": "4xx", "level": "WARNING"})) == [ids[3], ids[2]]
+    assert ids_of(client.get("/logs", params={"status": "404", "level": "INFO"})) == [ids[6]]
+    assert ids_of(
+        client.get("/logs", params={"status": "5xx", "level": ["ERROR", "CRITICAL"], "q": "catalog"})
+    ) == [ids[5]]
+
+
+def test_status_filter_paginates(client, status_dataset):
+    ids = status_dataset
+    first = client.get("/logs", params={"status": "4xx", "limit": 2}).json()
+    assert [i["id"] for i in first["items"]] == [ids[6], ids[3]]
+    second = client.get("/logs", params={"status": "4xx", "limit": 2, "cursor": first["next_cursor"]}).json()
+    assert [i["id"] for i in second["items"]] == [ids[2]]
+    assert second["next_cursor"] is None
+
+
+def test_count_with_status(client, status_dataset):
+    assert client.get("/logs/count", params={"status": "4xx"}).json() == {"total": 3}
+    assert client.get("/logs/count", params={"status": ["500", "503"]}).json() == {"total": 2}
+    response = client.get("/logs/count", params={"status": "7xx"})
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Valor inválido para o parâmetro 'status'."}
+
+
+def test_facets_list_distinct_status_codes(client, status_dataset):
+    assert client.get("/logs/facets").json()["status_codes"] == [101, 200, 304, 401, 404, 500, 503]

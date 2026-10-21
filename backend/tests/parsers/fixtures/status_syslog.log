@@ -1,0 +1,4 @@
+<14>1 2026-10-05T14:03:22Z web01 api 2112 - - GET /api/orders http_status=500 in 40ms
+Oct  5 14:03:23 web01 api[311]: GET /api/orders status=503 upstream down
+<30>Oct  5 14:03:24 web01 api[311]: GET /api/orders status=503 upstream down
+Oct  5 14:03:25 web01 api[311]: GET /api/orders done

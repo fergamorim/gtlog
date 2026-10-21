@@ -33,6 +33,9 @@ class LogFilters:
     levels: list[LogLevel] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
     categories: list[str] = field(default_factory=list)
+    # HTTP status: exact codes (404) and classes by first digit (4 = 400..499); a row matches either.
+    status_codes: list[int] = field(default_factory=list)
+    status_classes: list[int] = field(default_factory=list)
     import_id: int | None = None
     start: datetime | None = None  # inclusive
     end: datetime | None = None  # exclusive
@@ -48,6 +51,8 @@ def build_conditions(filters: LogFilters) -> list[ColumnElement[bool]]:
         conditions.append(LogEntry.service.in_(filters.services))
     if filters.categories:
         conditions.append(LogEntry.category.in_(filters.categories))
+    if filters.status_codes or filters.status_classes:
+        conditions.append(_status_condition(filters.status_codes, filters.status_classes))
     if filters.import_id is not None:
         conditions.append(LogEntry.import_id == filters.import_id)
     if filters.start is not None:
@@ -57,6 +62,17 @@ def build_conditions(filters: LogFilters) -> list[ColumnElement[bool]]:
     if filters.q:
         conditions.append(_text_condition(filters.q))
     return conditions
+
+
+def _status_condition(codes: list[int], classes: list[int]) -> ColumnElement[bool]:
+    # Classes are ranges (BETWEEN 400 AND 499), not status_code / 100 = 4, so ix_log_status_ts is usable.
+    # NULL never matches either form, so rows without a code drop out.
+    parts: list[ColumnElement[bool]] = [
+        LogEntry.status_code.between(digit * 100, digit * 100 + 99) for digit in classes
+    ]
+    if codes:
+        parts.append(LogEntry.status_code.in_(codes))
+    return or_(*parts)
 
 
 def _text_condition(q: str) -> ColumnElement[bool]:
@@ -126,14 +142,15 @@ def get_log(db: Session, entry_id: int) -> LogEntry | None:
     return db.get(LogEntry, entry_id)
 
 
-def facets(db: Session) -> dict[str, list[str]]:
-    """Distinct non-null services and categories, sorted."""
+def facets(db: Session) -> dict[str, list]:
+    """Distinct non-null services, categories and HTTP status codes, sorted."""
     return {
         "services": _distinct(db, LogEntry.service),
         "categories": _distinct(db, LogEntry.category),
+        "status_codes": _distinct(db, LogEntry.status_code),
     }
 
 
-def _distinct(db: Session, column) -> list[str]:
+def _distinct(db: Session, column) -> list:
     stmt = select(column).where(column.is_not(None)).distinct().order_by(column)
     return list(db.scalars(stmt))

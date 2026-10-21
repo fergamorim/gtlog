@@ -17,7 +17,10 @@ from app.core.database import Base, engine
 
 # Columns added after the first release. create_all skips existing tables, so a database created by an
 # older version (a kept `pgdata` volume) would otherwise fail every query that selects them.
-_ADDED_COLUMNS = ("ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS format VARCHAR(30)",)
+_ADDED_COLUMNS = (
+    "ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS format VARCHAR(30)",
+    "ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS status_code SMALLINT",
+)
 
 
 @asynccontextmanager

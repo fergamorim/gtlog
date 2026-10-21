@@ -54,7 +54,7 @@ export function DashboardPage() {
           <Panel
             className="span-2"
             title="Volume ao longo do tempo"
-            hint={`Por ${data.bucket === 'hour' ? 'hora' : 'dia'} · clique em um ponto para abrir os logs`}
+            hint={`Por ${data.bucket === 'hour' ? 'hora' : 'dia'} (UTC) · clique em um ponto para abrir os logs`}
           >
             <TimeseriesChart
               data={data.timeseries}

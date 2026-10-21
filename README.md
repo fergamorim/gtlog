@@ -24,7 +24,7 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 | Processamento e classificação | Detecção automática entre 5 formatos ([lista abaixo](#formatos-de-log-suportados)). Nível normalizado (WARN, err, fatal, códigos HTTP, severidade syslog) e categoria por palavras-chave da mensagem. Linhas inválidas são contadas e ignoradas, sem derrubar a importação. |
 | Armazenamento | PostgreSQL 16, ingestão com `COPY` em lotes de 5.000 linhas, índices para os filtros e para a ordenação. |
 | Tabela responsiva | Colunas no desktop e cartões no celular; clique em uma linha para ver a linha original num painel lateral. |
-| Filtros por nível, data e conteúdo | Nível, período (com atalhos 1 h / 24 h / 7 d / 30 d), serviço, categoria e importação. Combináveis e guardados na URL, então dá para compartilhar o link de uma visão. |
+| Filtros por nível, data e conteúdo | Nível, período (com atalhos 1 h / 24 h / 7 d / 30 d), serviço, categoria, código HTTP (exato, como `404`, ou classe, como `5xx`) e importação. Combináveis e guardados na URL, então dá para compartilhar o link de uma visão. |
 | Busca textual | Full-text do Postgres na mensagem e no serviço, por prefixo (`pay` encontra `payments`). Aceita frase exata entre aspas, `or` e exclusão com `-`. |
 | Scroll infinito | Paginação por cursor (keyset), 200 registros por página, com virtualização: só as linhas visíveis ficam no DOM. |
 | Dashboard | Total, erros + críticos, taxa de erro e período coberto; distribuição por nível; top serviços (com erros em destaque) e categorias; erros mais frequentes agrupados. |
@@ -165,10 +165,15 @@ O formato é detectado pelas primeiras 200 linhas não vazias; vence o parser qu
 | Texto (`[serviço]` opcional, nível com ou sem colchetes) | `2026-10-05T14:03:22Z ERROR [payments] timeout calling catalog after 15023ms` |
 | Texto, padrão do `logging` do Python | `2026-10-05 14:03:23,117 - payments.api - ERROR - card declined` |
 | JSON lines (`timestamp`/`time`/`@timestamp`, `level`/`severity`, `service`/`logger`/`app`, `message`/`msg`) | `{"timestamp": "2026-10-05T14:03:22Z", "level": "ERROR", "service": "payments", "message": "payment 9c2e1f declined"}` |
-| Access log HTTP (Apache/Nginx combined ou common; 5xx = ERROR, 4xx = WARNING) | `198.51.100.23 - - [05/Oct/2026:14:03:23 +0000] "POST /api/payments HTTP/2.0" 502 157 "-" "okhttp/4.12.0"` |
+| Access log HTTP (Apache/Nginx combined ou common; nível pelo código: 502/503/504 = CRITICAL, demais 5xx = ERROR, 4xx = WARNING, 2xx/3xx = INFO, 1xx = DEBUG) | `198.51.100.23 - - [05/Oct/2026:14:03:23 +0000] "POST /api/payments HTTP/2.0" 502 157 "-" "okhttp/4.12.0"` |
 | Syslog RFC 5424 | `<165>1 2026-10-05T14:03:22.003Z web01 nginx 2112 ID47 - upstream timed out` |
 | Syslog RFC 3164 (BSD) | `<34>Oct  5 14:03:22 web01 sshd[4721]: Failed password for root from 10.0.0.5` |
 | CSV com cabeçalho (separador `,`, `;` ou tab; só a coluna de data é obrigatória: `timestamp`, `ts`, `date`, `sys_updated_at`, `opened_at` ou qualquer nome terminado em `_at`, `_time` ou `_ts`; nível por `level`, `severity` ou escalas como `priority` `1 - Critical`; serviço por `service`, `host`, `assignment_group` ou `category`; sem coluna de mensagem, ela é montada com as demais colunas no formato `nome=valor`; datas em ISO, epoch ou `dd/mm/aaaa hh:mm`; `?` e `N/A` contam como vazio; a linha de cabeçalho não conta como inválida; campos entre aspas não podem quebrar linha) | `timestamp,level,service,message` e depois `2026-10-05T14:03:22Z,ERROR,payments,"timeout calling catalog, after 15023ms"`; exportações de incidentes como `number,incident_state,...,priority,...,sys_updated_at` também funcionam |
+
+O código HTTP de cada linha é guardado (`status_code`) e pode ser filtrado: vem do access log, das chaves/colunas
+`status`, `status_code`, `statusCode`, `http_status` ou `response_code` em JSON e CSV, e de trechos como `status=404`
+ou `status: 503` em texto e syslog. Se a linha não traz nível próprio, o nível sai do código (tabela em
+[docs/api.md](docs/api.md#códigos-http-e-níveis)).
 
 Linhas fora do formato detectado contam como inválidas. Um arquivo em que nenhum parser reconhece nenhuma linha
 termina com status `FAILED` ("Formato de log não reconhecido.").

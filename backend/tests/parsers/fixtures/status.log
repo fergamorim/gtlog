@@ -1,0 +1,4 @@
+2026-10-05T14:03:22Z INFO [gateway] GET /api/orders status=404 in 12ms
+2026-10-05T14:03:23Z ERROR [gateway] upstream catalog failed, status: 503
+2026-10-05T14:03:24Z WARN [api] request done STATUS_CODE=200 but slow
+2026-10-05T14:03:25Z INFO [nginx] upstream_status=502 forwarded to client

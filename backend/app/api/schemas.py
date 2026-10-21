@@ -12,6 +12,8 @@ MAX_INT = 2**31 - 1
 MAX_FILTER_VALUES = 20
 ServiceValue = Annotated[str, StringConstraints(max_length=100)]
 CategoryValue = Annotated[str, StringConstraints(max_length=50)]
+# An exact HTTP status code (100..599) or a class from 1xx to 5xx (case-insensitive).
+StatusValue = Annotated[str, StringConstraints(pattern=r"^(?:[1-5][0-9]{2}|[1-5][xX]{2})$")]
 
 
 class ImportJobOut(BaseModel):
@@ -38,6 +40,7 @@ class LogEntryOut(BaseModel):
     level: LogLevel
     service: str | None
     category: str | None
+    status_code: int | None
     message: str
     raw: str
 
@@ -54,6 +57,7 @@ class LogCount(BaseModel):
 class Facets(BaseModel):
     services: list[str]
     categories: list[str]
+    status_codes: list[int]
 
 
 class TimeseriesPoint(BaseModel):
@@ -102,10 +106,18 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC)
 
 
+def _split_status(values: list[str]) -> tuple[list[int], list[int]]:
+    """Validated status values -> (exact codes, class digits), deduplicated and sorted."""
+    classes = {int(v[0]) for v in values if v[1:].lower() == "xx"}
+    codes = {int(v) for v in values if v[1:].lower() != "xx"}
+    return sorted(codes), sorted(classes)
+
+
 def log_filters(
     level: Annotated[list[LogLevel] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
     service: Annotated[list[ServiceValue] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
     category: Annotated[list[CategoryValue] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
+    status: Annotated[list[StatusValue] | None, Query(max_length=MAX_FILTER_VALUES)] = None,
     import_id: Annotated[int | None, Query(ge=1, le=MAX_INT)] = None,
     start: Annotated[datetime | None, Query()] = None,
     end: Annotated[datetime | None, Query()] = None,
@@ -115,10 +127,13 @@ def log_filters(
     start, end = _as_utc(start), _as_utc(end)
     if start is not None and end is not None and start >= end:
         raise HTTPException(status_code=422, detail="A data inicial deve ser anterior à data final.")
+    status_codes, status_classes = _split_status(status or [])
     return LogFilters(
         levels=level or [],
         services=service or [],
         categories=category or [],
+        status_codes=status_codes,
+        status_classes=status_classes,
         import_id=import_id,
         start=start,
         end=end,

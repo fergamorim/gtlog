@@ -11,7 +11,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters'
 import { countActiveFilters, type FilterKey, type LogFilters } from '../lib/filters'
 import { formatNumber } from '../lib/format'
 
-const LOG_FILTER_KEYS: FilterKey[] = ['q', 'level', 'start', 'end', 'service', 'category', 'importId']
+const LOG_FILTER_KEYS: FilterKey[] = ['q', 'level', 'start', 'end', 'service', 'category', 'status', 'importId']
 
 export function LogsPage() {
   const { filters, setFilters, clearFilters } = useUrlFilters()

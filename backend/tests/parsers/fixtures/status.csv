@@ -1,0 +1,6 @@
+timestamp,level,service,statusCode,message
+2026-10-05T14:03:22Z,,checkout,502,POST /api/payments bad gateway
+2026-10-05T14:03:23Z,INFO,checkout,500,retry scheduled after server error
+2026-10-05T14:03:24Z,,checkout,404.0,GET /api/cart/77 not found
+2026-10-05T14:03:25Z,,checkout,N/A,cart recalculated
+2026-10-05T14:03:26Z,,checkout,Closed,ticket closed

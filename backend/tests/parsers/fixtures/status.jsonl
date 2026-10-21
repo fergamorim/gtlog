@@ -1,0 +1,7 @@
+{"timestamp": "2026-10-05T14:03:22Z", "service": "gateway", "status": 503, "message": "GET /api/catalog failed upstream"}
+{"timestamp": "2026-10-05T14:03:23Z", "level": "info", "service": "gateway", "status_code": 503, "message": "health probe saw a 503 (expected during deploy)"}
+{"timestamp": "2026-10-05T14:03:24Z", "service": "auth", "statusCode": "401", "message": "POST /login rejected"}
+{"timestamp": "2026-10-05T14:03:25Z", "service": "orders", "status": "shipped", "http_status": 404.0, "message": "order 812 lookup"}
+{"timestamp": "2026-10-05T14:03:26Z", "service": "orders", "status": "shipped", "message": "order 812 updated"}
+{"timestamp": "2026-10-05T14:03:27Z", "service": "edge", "response_code": 101, "message": "websocket upgraded"}
+{"timestamp": "2026-10-05T14:03:28Z", "service": "edge", "status": 1000, "message": "batch of 1000 processed"}

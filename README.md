@@ -177,7 +177,7 @@ desligue o Foco (Não Perturbe) e, no Safari, confira **Ajustes › Sites › No
 
 ## Desenvolvimento local (sem Docker para API e web)
 
-Requer Python 3.12 e Node 22. O Postgres pode continuar no Compose:
+Requer Python 3.12 (3.11 no mínimo; o 3.9 do macOS não funciona) e Node 22. O Postgres pode continuar no Compose:
 
 ```bash
 docker compose up -d db
@@ -187,7 +187,7 @@ Backend (porta 8000; o padrão de `DATABASE_URL` já aponta para `localhost:5432
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
@@ -218,16 +218,42 @@ Variáveis de ambiente:
 
 ## Testes e lint
 
-Backend: os testes de API precisam de um Postgres em `localhost:5432` (por exemplo, `docker compose up -d db`).
-Eles usam o banco `gtlog_test`, criado automaticamente e recriado a cada execução, então não apagam os dados de
-desenvolvimento.
+### Backend: rodar os testes localmente
+
+Pré-requisitos:
+
+- **Python 3.11 ou mais novo** (o projeto usa 3.12, o mesmo da imagem Docker e da CI). O Python 3.9 que vem no
+  macOS não serve: a importação dos testes falha com `TypeError: unsupported operand type(s) for |` por causa de
+  anotações como `str | None`, e o código também usa `datetime.UTC`, que só existe a partir do 3.11. No macOS,
+  instale com `brew install python@3.12` (ou pelo [python.org](https://www.python.org/downloads/)).
+- **Postgres rodando antes do `pytest`.** Os testes não sobem banco sozinhos: eles conectam em `localhost:5432`
+  com o usuário `gtlog`/`gtlog`. Suba só o serviço `db` do Compose e espere ele ficar saudável:
+
+```bash
+docker compose up -d --wait db
+```
+
+Sem o banco, o `pytest` para antes de rodar qualquer teste, com `ImportError while loading conftest` seguido de
+`(psycopg.OperationalError) connection failed: ... port 5432 failed: Connection refused`. Os testes usam o banco `gtlog_test` no mesmo servidor, criado automaticamente na primeira execução e com
+as tabelas recriadas a cada execução, então não apagam os dados de desenvolvimento (banco `gtlog`). Para usar outro
+servidor, defina `TEST_DATABASE_URL`.
+
+Depois, a partir da raiz do projeto:
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
+python3.12 -m venv .venv          # ou python3.11; não use o python3 do sistema no macOS
+source .venv/bin/activate
+python --version                  # precisa mostrar 3.11 ou mais novo
+pip install -r requirements-dev.txt   # já inclui o requirements.txt
 pytest
 ruff check .
 ```
+
+Nas próximas vezes basta `docker compose up -d --wait db`, `source .venv/bin/activate` e `pytest`. Para desligar o
+banco ao terminar: `docker compose stop db`.
+
+### Frontend e integração
 
 Frontend (Vitest + Testing Library, sem backend):
 

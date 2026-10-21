@@ -9,7 +9,7 @@ Plataforma de análise de logs (desafio técnico Full Stack). Importa arquivos d
 
 ## Comandos
 - Subir tudo: `docker compose up --build`
-- Testes backend: `cd backend && pip install -r requirements-dev.txt && pytest`
+- Testes backend: Python 3.11+ (o 3.9 do macOS falha) e Postgres no ar antes: `docker compose up -d --wait db`, depois `cd backend && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt && pytest` (usa o banco `gtlog_test` em localhost:5432; ver README, "Testes e lint")
 - Lint backend: `cd backend && ruff check .`
 - Frontend: `cd frontend && npm run dev | npm run build | npm run lint`
 - Logs de exemplo: `python scripts/generate_logs.py --lines 200000 --out samples/app.log`

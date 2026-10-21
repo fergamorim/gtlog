@@ -131,3 +131,6 @@ Registro curto no estilo ADR. Cada entrada tem contexto, decisão, alternativas 
 - **Observação em tempo real**: linhas escritas no arquivo antigo depois da última leitura e antes de uma rotação
   se perdem (a leitura passa para o arquivo novo). Uma última linha que nunca recebe quebra de linha não é
   importada. Arquivos comprimidos na rotação (`.gz`) não são lidos.
+- **Alertas de CRITICAL sem Web Push**: o frontend consulta `GET /watches` a cada 3 s e usa a API `Notification`
+  quando `critical_lines` cresce. Sem service worker nem servidor de push, o aviso só sai com uma aba do GTLog
+  aberta; Web Push exigiria chaves VAPID, guardar as inscrições dos navegadores e HTTPS fora de `localhost`.

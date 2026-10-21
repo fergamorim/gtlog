@@ -168,6 +168,10 @@ class LogWatchOut(BaseModel):
     parsed_lines: int
     invalid_lines: int
     last_error: str | None
+    # CRITICAL lines read so far; the frontend notifies when it grows.
+    critical_lines: int
+    last_critical_message: str | None
+    last_critical_at: datetime | None
     created_at: datetime
     last_checked_at: datetime | None
     next_check_at: datetime

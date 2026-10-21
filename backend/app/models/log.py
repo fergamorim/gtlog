@@ -99,6 +99,10 @@ class LogWatch(Base):
     format: Mapped[str | None] = mapped_column(String(30), nullable=True)
     header: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # CRITICAL lines read so far and the latest one: the browser alerts when the count grows.
+    critical_lines: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_critical_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_critical_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

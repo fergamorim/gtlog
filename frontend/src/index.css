@@ -492,6 +492,9 @@ code, pre, .mono { font-family: var(--font-mono); }
 .watch-list .import-item { padding-left: 0; padding-right: 0; }
 .watch-list .import-item__links { align-items: center; flex-wrap: wrap; }
 .watch-list__hint { margin-top: var(--space-2); }
+.watch-list__critical { color: var(--level-critical-fg); font-weight: 600; }
+.watch-alerts { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.watch-alerts > .card__hint { flex: 1; }
 .status-badge--PAUSED { background: var(--surface-2); color: var(--muted); }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }

@@ -116,12 +116,14 @@ export function useUploadImport() {
 
 export const WATCH_REFRESH_MS = 3000
 
-export function useWatches() {
+/** inBackground keeps polling while the tab is hidden (browsers may still slow the timer down). */
+export function useWatches({ inBackground = false } = {}) {
   return useQuery({
     queryKey: queryKeys.watches,
     queryFn: ({ signal }) => api.listWatches(signal),
     // New lines can arrive at any time while a watch is active.
     refetchInterval: (query) => (query.state.data?.some((watch) => watch.active) ? WATCH_REFRESH_MS : false),
+    refetchIntervalInBackground: inBackground,
   })
 }
 

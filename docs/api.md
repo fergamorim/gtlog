@@ -50,14 +50,17 @@ Resposta:
 
 ```json
 {"id": 1, "path": "live.log", "interval_seconds": 10, "active": true, "import_id": 4, "format": "text",
- "offset": 58210, "parsed_lines": 731, "invalid_lines": 3, "last_error": null, "created_at": "...",
+ "offset": 58210, "parsed_lines": 731, "invalid_lines": 3, "last_error": null, "critical_lines": 2,
+ "last_critical_message": "token signing key missing", "last_critical_at": "...", "created_at": "...",
  "last_checked_at": "...", "next_check_at": "..."}
 ```
 
 Cada observação grava suas linhas em uma importação própria (`import_id`), então `import_id=4` em `/logs` e
 `/stats` mostra só o que veio dela. `offset` é quantos bytes do arquivo já foram lidos. `last_error` explica a última
 leitura que não deu certo (`Arquivo não encontrado: live.log.`, `Formato de log não reconhecido.`), e a observação
-continua tentando a cada intervalo.
+continua tentando a cada intervalo. `critical_lines` conta as linhas `CRITICAL` lidas pela observação, e
+`last_critical_message`/`last_critical_at` guardam a mais recente; o frontend mostra uma notificação do navegador
+quando o contador aumenta.
 
 ## Consulta de logs
 

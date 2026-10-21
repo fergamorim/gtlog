@@ -94,6 +94,10 @@ export interface LogWatch {
   parsed_lines: number
   invalid_lines: number
   last_error: string | null
+  /** CRITICAL lines read so far, and the latest one. */
+  critical_lines: number
+  last_critical_message: string | null
+  last_critical_at: string | null
   created_at: string
   last_checked_at: string | null
   next_check_at: string

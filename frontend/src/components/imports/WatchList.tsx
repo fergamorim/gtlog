@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
 import { errorMessage } from '../../api/client'
 import { useWatchMutations, useWatchSettings, useWatches } from '../../api/queries'
+import { criticalLogsUrl } from '../../hooks/useCriticalAlerts'
 import type { LogWatch } from '../../api/types'
 import { formatDateTime, formatInterval, formatNumber, formatRelative } from '../../lib/format'
 import { Icon } from '../ui/Icon'
 import { ErrorState } from '../ui/StateViews'
+import { WatchAlerts } from './WatchAlerts'
 
 export function WatchList() {
   const { data, isError, error, refetch, isFetching } = useWatches()
@@ -23,6 +25,7 @@ export function WatchList() {
           <span>{errorMessage(failed)}</span>
         </div>
       )}
+      <WatchAlerts />
       <ul className="import-list watch-list" aria-label="Arquivos observados">
         {data.map((watch) => (
           <li key={watch.id} className="import-item">
@@ -40,6 +43,11 @@ export function WatchList() {
               <span>{formatNumber(watch.parsed_lines)} válidas</span>
               <span>{formatNumber(watch.invalid_lines)} inválidas</span>
               {watch.format && <span>formato {watch.format}</span>}
+              {watch.critical_lines > 0 && (
+                <Link className="watch-list__critical" to={criticalLogsUrl(watch)}>
+                  {formatNumber(watch.critical_lines)} {watch.critical_lines === 1 ? 'crítico' : 'críticos'}
+                </Link>
+              )}
             </span>
             {watch.last_error && <span className="import-item__error">{watch.last_error}</span>}
             <span className="import-item__links">

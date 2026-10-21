@@ -22,6 +22,9 @@ from app.services.watcher import WatchScheduler
 _ADDED_COLUMNS = (
     "ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS format VARCHAR(30)",
     "ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS status_code SMALLINT",
+    "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS critical_lines INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS last_critical_message TEXT",
+    "ALTER TABLE log_watches ADD COLUMN IF NOT EXISTS last_critical_at TIMESTAMPTZ",
 )
 
 

@@ -163,6 +163,14 @@ python3 scripts/generate_logs.py --lines 1000 --follow 5 --out samples/live.log 
 
 Depois observe `live.log` com intervalo de 5 segundos e abra **Logs**.
 
+**Alertas de erros críticos.** Com pelo menos uma observação na lista, clique em **Ativar alertas** e aceite a
+permissão do navegador. A partir daí, quando uma leitura trouxer linhas `CRITICAL`, o navegador mostra uma
+notificação com o arquivo, quantos erros críticos chegaram e a última mensagem; clicar nela abre esses logs. Cada
+observação mostra também o total de críticos, com link para eles. São notificações do próprio navegador (API
+`Notification`), não Web Push: elas aparecem enquanto houver uma aba do GTLog aberta, mesmo em segundo plano ou
+minimizada (o navegador pode espaçar as consultas de abas ocultas para até 1 por minuto). Funcionam em `localhost`
+ou HTTPS; com o navegador fechado não há aviso.
+
 ## Desenvolvimento local (sem Docker para API e web)
 
 Requer Python 3.12 e Node 22. O Postgres pode continuar no Compose:

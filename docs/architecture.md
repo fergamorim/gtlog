@@ -76,7 +76,8 @@ caracteres) e `search_vector`.
 
 `log_watches`: `path` (relativo a `WATCH_ROOT`), `interval_seconds`, `active`, `import_id` (a importação que recebe
 as linhas), `offset` (bytes já lidos), `inode` e `head_size`/`head_digest` (SHA-256 do primeiro KB lido, para
-detectar rotação), `format`, `header` (cabeçalho CSV), `last_error`, `last_checked_at` e `next_check_at`.
+detectar rotação), `format`, `header` (cabeçalho CSV), `last_error`, `critical_lines`/`last_critical_message`/`last_critical_at`
+(para os alertas), `last_checked_at` e `next_check_at`.
 O índice `ix_watch_due` (`active, next_check_at`) atende a busca do agendador.
 
 Os índices são criados na subida da API com `CREATE INDEX IF NOT EXISTS`, depois de `create_all` (veja

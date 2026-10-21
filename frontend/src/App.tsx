@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useImportCompletionWatcher, useWatchActivity } from './api/queries'
 import { AppHeader } from './components/layout/AppHeader'
 import { EmptyState } from './components/ui/StateViews'
+import { useCriticalAlerts } from './hooks/useCriticalAlerts'
 
 // Route-level code splitting: Recharts only loads with the dashboard.
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
@@ -21,6 +22,7 @@ export default function App() {
   const { pathname } = useLocation()
   useImportCompletionWatcher()
   useWatchActivity()
+  useCriticalAlerts()
   // The logs page fills the viewport so the virtualized table owns the scroll.
   const fill = pathname === '/logs'
 

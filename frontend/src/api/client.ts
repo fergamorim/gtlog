@@ -1,4 +1,4 @@
-import type { Facets, ImportJob, LogCount, LogEntry, LogPage, Stats } from './types'
+import type { Facets, Folder, ImportJob, LogCount, LogEntry, LogPage, LogWatch, LogWatchInput, Stats, WatchSettings } from './types'
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
@@ -6,6 +6,7 @@ const NETWORK_ERROR = 'Não foi possível conectar à API. Verifique se o servid
 
 const STATUS_MESSAGES: Record<number, string> = {
   404: 'Recurso não encontrado.',
+  409: 'Conflito com o estado atual do recurso.',
   413: 'O arquivo excede o tamanho máximo permitido.',
   415: 'Tipo de arquivo não suportado. Envie um log em texto.',
   422: 'Requisição inválida.',
@@ -51,6 +52,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, NETWORK_ERROR)
   }
   if (!response.ok) throw new ApiError(response.status, await readDetail(response))
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
@@ -80,6 +82,19 @@ export const api = {
   getLog: (id: number, signal?: AbortSignal) => request<LogEntry>(`/logs/${id}`, { signal }),
   getFacets: (signal?: AbortSignal) => request<Facets>('/logs/facets', { signal }),
   getStats: (filters: URLSearchParams, signal?: AbortSignal) => request<Stats>(withQuery('/stats', filters), { signal }),
+
+  getWatchSettings: (signal?: AbortSignal) => request<WatchSettings>('/watches/settings', { signal }),
+  listWatchFolder: (path: string, signal?: AbortSignal) =>
+    request<Folder>(withQuery('/watches/files', new URLSearchParams(path ? { path } : {})), { signal }),
+  listWatches: (signal?: AbortSignal) => request<LogWatch[]>('/watches', { signal }),
+  createWatch: (input: LogWatchInput) => request<LogWatch>('/watches', jsonBody('POST', input)),
+  updateWatch: (id: number, changes: Partial<Pick<LogWatch, 'active' | 'interval_seconds'>>) =>
+    request<LogWatch>(`/watches/${id}`, jsonBody('PATCH', changes)),
+  deleteWatch: (id: number) => request<void>(`/watches/${id}`, { method: 'DELETE' }),
+}
+
+function jsonBody(method: string, body: unknown): RequestInit {
+  return { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }
 }
 
 /** Human-readable message for any error thrown by queries/mutations. */

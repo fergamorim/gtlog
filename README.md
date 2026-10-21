@@ -73,16 +73,36 @@ Desktop. Para resolver, use uma das opções:
 
 ## Gerar logs de exemplo e importar
 
-O script não tem dependências além do Python 3. Cerca de 0,5% das linhas sai propositalmente malformada, para
+O script não tem dependências além do Python 3 (3.9 ou mais novo, como o do macOS). Cerca de 0,5% das linhas sai propositalmente malformada, para
 exercitar a contagem de linhas inválidas.
 
 ```bash
 python3 scripts/generate_logs.py --lines 200000 --out samples/app.log
 python3 scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
 python3 scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
+python3 scripts/generate_logs.py --lines 50000 --format http --out samples/access.log
+python3 scripts/generate_logs.py --lines 20000 --scenario ssh --out samples/ssh.log
 ```
 
-Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005) e `--seed` (padrão 42).
+As mensagens imitam sistemas reais, inspiradas em massas públicas de logs. `--scenario` escolhe a origem (padrão
+`mixed`, todas juntas):
+
+| Cenário | O que gera |
+| --- | --- |
+| `app` | Aplicação web (pagamentos, catálogo, login, jobs, consultas lentas, falta de memória e disco). |
+| `k8s` | Pods Kubernetes: health checks, transações, `OOMKilled`, `CrashLoopBackOff`, `ImagePullBackOff`, deadlock, 502/503 e picos de latência. |
+| `ssh` | `sshd`: logins aceitos e recusados, sessões PAM e rajadas de força bruta (usuários inválidos e senhas de root) vindas do mesmo IP. |
+| `wordpress` | Site WordPress sob DDoS de pingback (xmlrpc): rajadas de `503` com user agent `WordPress/x.y; site`, rate limit e falhas de login. |
+| `events` | App Flask com SDK de eventos: `INCOMING_REQUEST`, `DB_QUERY`, `ROUTING_ERROR` 404, `SERVER_ERROR` 500 e erros de banco. |
+
+Ataques e incidentes saem em rajadas (linhas seguidas com a mesma origem), como acontece de verdade. Mensagens com
+código HTTP trazem `status=NNN`, que vira o código da linha; em JSON e CSV ele também vai num campo `status`.
+`--format http` gera access log no formato combined do Apache/Nginx, com tráfego normal, varreduras (`/.env`,
+`/wp-login.php`) e o flood de pingback.
+
+Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005), `--seed` (padrão 42) e
+`--follow N` (depois de gerar, continua acrescentando N linhas por segundo; veja
+[observação em tempo real](#observar-um-arquivo-de-log-em-tempo-real)).
 `samples/` está no `.gitignore`.
 
 Pela interface: abra http://localhost:5173/importar e arraste o arquivo. Pela API:
@@ -95,7 +115,48 @@ curl "http://localhost:8000/stats"
 ```
 
 Exemplo de job concluído para 200 mil linhas geradas:
-`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 198964, "invalid_lines": 1036`.
+`"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992`.
+
+## Observar um arquivo de log em tempo real
+
+Na tela **Importar**, o cartão **Observar arquivo em tempo real** acompanha um log que continua crescendo. Você
+indica o caminho do arquivo e de quanto em quanto tempo ele deve ser lido (em segundos ou minutos, de 1 segundo a
+24 horas). A cada intervalo a API lê só o que foi acrescentado desde a última leitura, como um `tail -f`, e importa
+essas linhas em uma importação própria da observação (filtrável em Logs e no Dashboard). As telas de logs, contagem
+e dashboard se atualizam sozinhas quando chegam linhas novas.
+
+- Na primeira leitura o conteúdo que o arquivo já tem é importado. Marque **Ignorar o conteúdo atual** para
+  importar só o que for escrito dali em diante.
+- Uma última linha ainda sem quebra de linha espera a próxima leitura, para não importar linha pela metade.
+- Se o arquivo for rotacionado (recriado no mesmo caminho) ou truncado, a leitura recomeça do início do novo
+  arquivo, e o formato é detectado de novo.
+- Se o arquivo sumir, a observação mostra o erro e continua tentando; quando ele volta, a leitura segue.
+- **Pausar** interrompe as leituras e **Retomar** lê de uma vez o que foi escrito no meio tempo. **Remover** encerra
+  a observação; os logs já importados continuam lá.
+
+**Onde o arquivo precisa estar.** A API roda dentro de um container e não enxerga o disco do seu computador. Por
+isso o Compose monta uma pasta do host, só para leitura, em `/watch` no container, e só arquivos dentro dela podem
+ser observados (caminhos com `..` ou links simbólicos que saiam dela são recusados). Por padrão a pasta é
+`samples/` do projeto; para outra pasta, defina `GTLOG_WATCH_DIR` antes de subir:
+
+```bash
+GTLOG_WATCH_DIR=/Users/voce/meu-app/logs docker compose up --build
+```
+
+No formulário, clique em **Selecionar arquivo** para navegar pelas pastas e escolher o arquivo, ou digite o caminho:
+o completo (`/Users/voce/meu-app/logs/app.log`, quando a pasta veio de `GTLOG_WATCH_DIR`) ou o relativo à pasta
+(`app.log`, `2026/10/api.log`). O seletor mostra só o conteúdo da pasta compartilhada: o seletor de arquivos nativo
+do navegador entrega o conteúdo do arquivo, mas nunca o caminho dele, e a API precisa do caminho para reler o
+arquivo a cada intervalo. No macOS, a pasta precisa estar num local que o Docker Desktop compartilha (o padrão
+inclui `/Users`).
+
+Para testar com um log que cresce sozinho, o gerador acrescenta linhas continuamente com `--follow`:
+
+```bash
+python3 scripts/generate_logs.py --lines 1000 --follow 5 --out samples/live.log   # 5 linhas/s até Ctrl+C
+```
+
+Depois observe `live.log` com intervalo de 5 segundos e abra **Logs**.
 
 ## Desenvolvimento local (sem Docker para API e web)
 
@@ -131,6 +192,10 @@ Variáveis de ambiente:
 | `DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog` | Conexão da API |
 | `UPLOAD_MAX_MB` | `1024` | Tamanho máximo do upload, em MB |
 | `CORS_ORIGINS` | `http://localhost:5173` | Origens permitidas, separadas por vírgula |
+| `WATCH_ROOT` | `/watch` | Pasta cujos arquivos podem ser observados em tempo real (fora do Docker, aponte para uma pasta local) |
+| `WATCH_SCHEDULER` | `true` | Liga o agendador que lê os arquivos observados (os testes desligam) |
+| `WATCH_HOST_ROOT` | vazio | A mesma pasta vista no host; permite digitar o caminho completo do host (o Compose preenche com `GTLOG_WATCH_DIR`) |
+| `GTLOG_WATCH_DIR` | `./samples` | Pasta do host montada em `/watch` pelo Compose |
 | `VITE_API_URL` | `http://localhost:8000` | URL da API usada pelo frontend (no build) |
 | `TEST_DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog_test` | Banco dos testes do backend |
 

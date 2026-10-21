@@ -13,6 +13,8 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog_test"
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# Tests run polls by hand; the background scheduler would race with them.
+os.environ["WATCH_SCHEDULER"] = "false"
 
 
 def _ensure_test_database() -> None:
@@ -48,7 +50,7 @@ def client():
     """API client over an empty database (modules may override this fixture)."""
     with TestClient(app) as c:
         with engine.begin() as conn:
-            conn.execute(text("TRUNCATE log_entries, import_jobs RESTART IDENTITY CASCADE"))
+            conn.execute(text("TRUNCATE log_watches, log_entries, import_jobs RESTART IDENTITY CASCADE"))
         yield c
 
 

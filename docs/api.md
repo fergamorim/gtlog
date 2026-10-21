@@ -15,12 +15,49 @@ Job:
 
 ```json
 {"id": 1, "filename": "app.log", "status": "PENDING|PROCESSING|DONE|FAILED", "format": "text",
- "total_lines": 200000, "parsed_lines": 198964, "invalid_lines": 1036, "error": null,
+ "total_lines": 200000, "parsed_lines": 199008, "invalid_lines": 992, "error": null,
  "created_at": "...", "finished_at": "..."}
 ```
 
 `format` é o formato detectado: `text`, `json`, `http`, `syslog` ou `csv`. Em CSV a linha de cabeçalho não entra em
 `total_lines` nem em `invalid_lines`.
+
+## Observação de arquivos em tempo real
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| GET | `/watches/settings` | Pasta observável (`root`), a mesma pasta no host (`host_root`, ou `null`) e limites do intervalo em segundos. |
+| GET | `/watches/files?path=logs` | Conteúdo de uma pasta dentro da pasta observável, para escolher o arquivo: `{"path", "parent", "entries": [{"name", "path", "is_dir", "size", "modified_at"}]}`. Pastas primeiro, ocultos de fora, até 1000 itens. `422` fora da pasta, `404` se não existir. |
+| POST | `/watches` | Começa a observar. Corpo JSON abaixo. Responde 201 com a observação. |
+| GET | `/watches` | Todas as observações, mais recente primeiro. |
+| GET | `/watches/{id}` | Uma observação. 404 se não existir. |
+| PATCH | `/watches/{id}` | Pausa/retoma (`active`) e/ou muda `interval_seconds`. |
+| DELETE | `/watches/{id}` | Encerra a observação (204). Os logs importados continuam na importação dela. |
+
+```json
+{"path": "live.log", "interval_seconds": 10, "start_at_end": false}
+```
+
+`path` é relativo à pasta observável; também valem um caminho absoluto dentro dela e, com `host_root` definido, o
+caminho completo no host (`/Users/voce/logs/app.log`). `interval_seconds` vai de 1 a
+86400. `start_at_end: true` ignora o conteúdo atual e importa só o que for acrescentado depois.
+
+Erros: `422` caminho fora da pasta observável (inclusive via `..` ou link simbólico) ou intervalo inválido, `404`
+arquivo inexistente, `415` arquivo binário, `409` arquivo já observado por outra observação ativa (também ao
+retomar).
+
+Resposta:
+
+```json
+{"id": 1, "path": "live.log", "interval_seconds": 10, "active": true, "import_id": 4, "format": "text",
+ "offset": 58210, "parsed_lines": 731, "invalid_lines": 3, "last_error": null, "created_at": "...",
+ "last_checked_at": "...", "next_check_at": "..."}
+```
+
+Cada observação grava suas linhas em uma importação própria (`import_id`), então `import_id=4` em `/logs` e
+`/stats` mostra só o que veio dela. `offset` é quantos bytes do arquivo já foram lidos. `last_error` explica a última
+leitura que não deu certo (`Arquivo não encontrado: live.log.`, `Formato de log não reconhecido.`), e a observação
+continua tentando a cada intervalo.
 
 ## Consulta de logs
 
@@ -98,7 +135,7 @@ Resposta:
 
 ```json
 {
-  "total": 198964,
+  "total": 199008,
   "by_level": {"DEBUG": 29000, "INFO": 119000, "WARNING": 30000, "ERROR": 16000, "CRITICAL": 4000},
   "error_rate": 0.1005,
   "first_timestamp": "...", "last_timestamp": "...",

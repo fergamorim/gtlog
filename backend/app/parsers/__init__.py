@@ -2,7 +2,7 @@
 
 from app.parsers.base import LineParser, ParsedLine
 from app.parsers.categories import CATEGORY_RULES, classify_category
-from app.parsers.detect import all_parsers, detect_parser
+from app.parsers.detect import all_parsers, detect_parser, parser_by_name
 from app.parsers.normalize import normalize_level
 
 __all__ = [
@@ -13,4 +13,5 @@ __all__ = [
     "classify_category",
     "detect_parser",
     "normalize_level",
+    "parser_by_name",
 ]

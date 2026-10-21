@@ -2,10 +2,11 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.models import ImportStatus, LogLevel
 from app.services.log_query import LogFilters
+from app.services.watcher import MAX_INTERVAL_SECONDS, MIN_INTERVAL_SECONDS
 
 MAX_INT = 2**31 - 1
 # Cap on repeated values per filter (level=...&level=...); each value is bounded by its column size.
@@ -142,3 +143,54 @@ def log_filters(
 
 
 LogFiltersDep = Annotated[LogFilters, Depends(log_filters)]
+
+
+class LogWatchIn(BaseModel):
+    path: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+    interval_seconds: Annotated[int, Field(ge=MIN_INTERVAL_SECONDS, le=MAX_INTERVAL_SECONDS)]
+    # True skips what the file already has and imports only lines appended from now on.
+    start_at_end: bool = False
+
+
+class LogWatchUpdate(BaseModel):
+    active: bool | None = None
+    interval_seconds: Annotated[int | None, Field(ge=MIN_INTERVAL_SECONDS, le=MAX_INTERVAL_SECONDS)] = None
+
+
+class LogWatchOut(BaseModel):
+    id: int
+    path: str
+    interval_seconds: int
+    active: bool
+    import_id: int
+    format: str | None
+    offset: int
+    parsed_lines: int
+    invalid_lines: int
+    last_error: str | None
+    created_at: datetime
+    last_checked_at: datetime | None
+    next_check_at: datetime
+
+
+class WatchSettingsOut(BaseModel):
+    root: str
+    # The same folder on the host (GTLOG_WATCH_DIR), or null when compose did not pass it.
+    host_root: str | None
+    min_interval_seconds: int
+    max_interval_seconds: int
+
+
+class FolderEntry(BaseModel):
+    name: str
+    # Relative to the watch root; send it back as `path` to open a folder or watch a file.
+    path: str
+    is_dir: bool
+    size: int | None
+    modified_at: datetime
+
+
+class FolderOut(BaseModel):
+    path: str
+    parent: str | None
+    entries: list[FolderEntry]

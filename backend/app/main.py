@@ -12,8 +12,10 @@ from app.api.health import router as health_router
 from app.api.imports import router as imports_router
 from app.api.logs import router as logs_router
 from app.api.stats import router as stats_router
+from app.api.watches import router as watches_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
+from app.services.watcher import WatchScheduler
 
 # Columns added after the first release. create_all skips existing tables, so a database created by an
 # older version (a kept `pgdata` volume) would otherwise fail every query that selects them.
@@ -35,7 +37,14 @@ async def lifespan(_: FastAPI):
         for table in Base.metadata.sorted_tables:
             for index in table.indexes:
                 conn.execute(CreateIndex(index, if_not_exists=True))
-    yield
+    scheduler = WatchScheduler() if get_settings().watch_scheduler else None
+    if scheduler:
+        scheduler.start()
+    try:
+        yield
+    finally:
+        if scheduler:
+            scheduler.stop()
 
 
 app = FastAPI(title="GTLog API", version="0.1.0", lifespan=lifespan)
@@ -65,3 +74,4 @@ app.include_router(health_router)
 app.include_router(imports_router)
 app.include_router(logs_router)
 app.include_router(stats_router)
+app.include_router(watches_router)

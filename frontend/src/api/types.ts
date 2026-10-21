@@ -80,3 +80,50 @@ export interface Stats {
   by_category: CategoryStat[]
   top_errors: TopError[]
 }
+
+export interface LogWatch {
+  id: number
+  /** Path relative to the watch root of the API. */
+  path: string
+  interval_seconds: number
+  active: boolean
+  /** Import that receives every line read by this watch. */
+  import_id: number
+  format: string | null
+  offset: number
+  parsed_lines: number
+  invalid_lines: number
+  last_error: string | null
+  created_at: string
+  last_checked_at: string | null
+  next_check_at: string
+}
+
+export interface LogWatchInput {
+  path: string
+  interval_seconds: number
+  start_at_end: boolean
+}
+
+export interface WatchSettings {
+  root: string
+  /** The same folder on the host (GTLOG_WATCH_DIR), or null when unknown. */
+  host_root: string | null
+  min_interval_seconds: number
+  max_interval_seconds: number
+}
+
+export interface FolderEntry {
+  name: string
+  /** Relative to the watch root. */
+  path: string
+  is_dir: boolean
+  size: number | null
+  modified_at: string
+}
+
+export interface Folder {
+  path: string
+  parent: string | null
+  entries: FolderEntry[]
+}

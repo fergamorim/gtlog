@@ -74,8 +74,34 @@ caracteres) e `search_vector`.
 | `ix_log_service`, `ix_log_category` | `service`, `category` | Filtros por igualdade e facetas (`DISTINCT`). |
 | `ix_log_search` | GIN em `search_vector` | Busca textual. |
 
+`log_watches`: `path` (relativo a `WATCH_ROOT`), `interval_seconds`, `active`, `import_id` (a importação que recebe
+as linhas), `offset` (bytes já lidos), `inode` e `head_size`/`head_digest` (SHA-256 do primeiro KB lido, para
+detectar rotação), `format`, `header` (cabeçalho CSV), `last_error`, `last_checked_at` e `next_check_at`.
+O índice `ix_watch_due` (`active, next_check_at`) atende a busca do agendador.
+
 Os índices são criados na subida da API com `CREATE INDEX IF NOT EXISTS`, depois de `create_all` (veja
 [decisions.md](decisions.md#6-esquema-com-create_all--if-not-exists-sem-alembic)).
+
+## Observação em tempo real
+
+`WatchScheduler` (em `services/watcher.py`) é uma thread iniciada no `lifespan` da API. A cada segundo ela busca as
+observações ativas com `next_check_at` vencido e chama `poll_watch` para cada uma:
+
+1. Trava a linha da observação com `SELECT ... FOR UPDATE SKIP LOCKED`, para que dois processos da API nunca leiam
+   o mesmo arquivo ao mesmo tempo.
+2. Resolve o caminho de novo (links simbólicos incluídos) e confere que ele continua dentro de `WATCH_ROOT`.
+3. Compara o arquivo aberto com o que foi lido antes: inode diferente, tamanho menor que `offset` ou primeiro KB
+   diferente (um arquivo recriado pode reaproveitar o inode) significa rotação ou truncamento, e a leitura volta ao
+   byte 0 com nova detecção de formato.
+4. Lê a partir de `offset` até 16 MB e para na última quebra de linha. As linhas passam pelo mesmo parser e pelo
+   mesmo `COPY` da importação por upload. Em CSV o cabeçalho guardado é reaplicado a um parser novo em cada leitura.
+5. Grava as linhas, os contadores da importação e o novo `offset` na mesma transação: se algo falhar, nada é
+   gravado e a próxima leitura repete o trecho, sem duplicar linhas.
+
+Se sobrou conteúdo (mais de 16 MB de atraso), a observação fica vencida de novo e é lida no próximo segundo; senão
+volta depois de `interval_seconds`. O frontend consulta `GET /watches` a cada 3 s enquanto houver observação ativa
+e, quando os contadores sobem, atualiza contagem, dashboard e facetas. A tabela de logs só é recarregada se o usuário
+estiver na primeira página, para não tirar a rolagem de quem está lendo registros mais antigos.
 
 ## Paginação por cursor
 

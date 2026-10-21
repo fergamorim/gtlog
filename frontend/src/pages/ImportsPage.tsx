@@ -4,6 +4,8 @@ import { useUploadImport } from '../api/queries'
 import { ImportList } from '../components/imports/ImportList'
 import { ImportProgress } from '../components/imports/ImportProgress'
 import { UploadDropzone } from '../components/imports/UploadDropzone'
+import { WatchForm } from '../components/imports/WatchForm'
+import { WatchList } from '../components/imports/WatchList'
 import { Icon } from '../components/ui/Icon'
 import { formatBytes } from '../lib/format'
 
@@ -31,31 +33,47 @@ export function ImportsPage() {
       <div className="page-head">
         <div>
           <h1>Importar logs</h1>
-          <p>Envie um arquivo; ele é processado em segundo plano e os logs ficam disponíveis para consulta.</p>
+          <p>Envie um arquivo ou observe um log que cresce; o processamento é em segundo plano e os logs ficam disponíveis para consulta.</p>
         </div>
       </div>
 
       <div className="imports-grid">
-        <section className="card" aria-labelledby="upload-title">
-          <div className="card__head">
-            <h2 className="card__title" id="upload-title">Novo arquivo</h2>
-          </div>
-          <div className="card__body job">
-            <UploadDropzone onFile={send} disabled={upload.isPending} />
-            {upload.isPending && (
-              <p role="status" className="card__hint inline-status">
-                <span className="spinner" aria-hidden="true" /> Enviando {fileName}…
+        <div className="imports-col">
+          <section className="card" aria-labelledby="upload-title">
+            <div className="card__head">
+              <h2 className="card__title" id="upload-title">Novo arquivo</h2>
+            </div>
+            <div className="card__body job">
+              <UploadDropzone onFile={send} disabled={upload.isPending} />
+              {upload.isPending && (
+                <p role="status" className="card__hint inline-status">
+                  <span className="spinner" aria-hidden="true" /> Enviando {fileName}…
+                </p>
+              )}
+              {error && (
+                <div className="alert alert--error" role="alert">
+                  <Icon name="alert" />
+                  <span><strong>Não foi possível importar {fileName}.</strong> {error}</span>
+                </div>
+              )}
+              {jobId != null && !error && !upload.isPending && <ImportProgress jobId={jobId} />}
+            </div>
+          </section>
+
+          <section className="card" aria-labelledby="watch-title">
+            <div className="card__head">
+              <h2 className="card__title" id="watch-title">Observar arquivo em tempo real</h2>
+            </div>
+            <div className="card__body">
+              <p className="card__hint watch-intro">
+                O arquivo é relido no intervalo escolhido e só as linhas novas são importadas, como um <code>tail -f</code>.
+                Rotação e truncamento do arquivo são detectados.
               </p>
-            )}
-            {error && (
-              <div className="alert alert--error" role="alert">
-                <Icon name="alert" />
-                <span><strong>Não foi possível importar {fileName}.</strong> {error}</span>
-              </div>
-            )}
-            {jobId != null && !error && !upload.isPending && <ImportProgress jobId={jobId} />}
-          </div>
-        </section>
+              <WatchForm />
+              <WatchList />
+            </div>
+          </section>
+        </div>
 
         <section className="card" aria-labelledby="recent-title">
           <div className="card__head">

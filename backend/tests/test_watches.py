@@ -142,6 +142,29 @@ def test_start_at_end_skips_existing_content(client, root):
     assert raws(watch.import_id) == LINES[2:]
 
 
+def test_start_at_end_keeps_a_partial_last_line_for_later(client, root):
+    path = root / "app.log"
+    write(path, LINES[:1], "w")
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(LINES[1][:20])
+    watch_id = create(client, start_at_end=True).json()["id"]
+
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(LINES[1][20:] + "\n")
+    watch = poll(watch_id)
+    assert raws(watch.import_id) == LINES[1:2]
+
+
+def test_shorter_interval_is_applied_from_the_last_read(client, root):
+    write(root / "app.log", LINES[:1], "w")
+    watch_id = create(client, interval=86_400).json()["id"]
+    watch = poll(watch_id)
+    response = client.patch(f"/watches/{watch_id}", json={"interval_seconds": 5})
+    assert response.status_code == 200
+    with SessionLocal() as db:
+        assert db.get(LogWatch, watch_id).next_check_at == watch.last_checked_at + timedelta(seconds=5)
+
+
 def test_csv_header_applies_to_every_poll(client, root):
     path = root / "app.csv"
     path.write_text("timestamp,level,service,message\n2026-10-05T14:03:22Z,ERROR,payments,timeout\n")

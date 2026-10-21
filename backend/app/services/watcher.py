@@ -87,7 +87,7 @@ def create_watch(db: Session, path: str, interval_seconds: int, start_at_end: bo
         if b"\x00" in fh.read(SNIFF_SIZE):
             raise WatchRejected(415, "O arquivo parece ser binário. Indique um log em texto.")
         stat = os.fstat(fh.fileno())
-        offset = stat.st_size if start_at_end else 0
+        offset = _end_of_last_line(fh, stat.st_size) if start_at_end else 0
         fh.seek(0)
         head = fh.read(min(offset, HEAD_BYTES))
 
@@ -136,8 +136,11 @@ def update_watch(db: Session, watch: LogWatch, active: bool | None, interval_sec
             # Resuming reads right away what was appended while paused.
             watch.next_check_at = datetime.now(UTC)
         watch.active = active
-    if interval_seconds is not None:
+    if interval_seconds is not None and interval_seconds != watch.interval_seconds:
         watch.interval_seconds = interval_seconds
+        # Reschedule from the last read, so a shorter interval applies now instead of after the old one.
+        base = watch.last_checked_at or datetime.now(UTC)
+        watch.next_check_at = min(watch.next_check_at, base + timedelta(seconds=interval_seconds))
     db.commit()
     db.refresh(watch)
     return watch
@@ -284,6 +287,19 @@ def _same_head(watch: LogWatch, fh: BinaryIO) -> bool:
 def _remember_head(watch: LogWatch, fh: BinaryIO) -> None:
     head = fh.read(min(watch.offset, HEAD_BYTES))
     watch.head_size, watch.head_digest = len(head), hashlib.sha256(head).hexdigest()
+
+
+def _end_of_last_line(fh: BinaryIO, size: int) -> int:
+    """Offset just after the file's last line break (0 without one): a partial last line is read later."""
+    end = size
+    while end > 0:
+        start = max(0, end - SNIFF_SIZE)
+        fh.seek(start)
+        found = fh.read(end - start).rfind(b"\n")
+        if found != -1:
+            return start + found + 1
+        end = start
+    return 0
 
 
 def _complete_lines(data: bytes) -> int:

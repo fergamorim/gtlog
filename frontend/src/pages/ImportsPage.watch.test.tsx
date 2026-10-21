@@ -9,7 +9,8 @@ const SETTINGS = { root: '/watch', host_root: null as string | null, min_interva
 
 const watch = (overrides: Partial<LogWatch> = {}): LogWatch => ({
   id: 1, path: 'live.log', interval_seconds: 30, active: true, import_id: 7, format: 'text', offset: 120,
-  parsed_lines: 12, invalid_lines: 1, last_error: null, created_at: '2026-10-05T17:00:00Z',
+  parsed_lines: 12, invalid_lines: 1, last_error: null, critical_lines: 0, last_critical_message: null, last_critical_at: null,
+  created_at: '2026-10-05T17:00:00Z',
   last_checked_at: '2026-10-05T17:00:30Z', next_check_at: '2026-10-05T17:01:00Z', ...overrides,
 })
 
@@ -132,5 +133,15 @@ describe('ImportsPage live watch', () => {
 
     expect(fetch.mock.calls.find(([, init]) => init?.method === 'DELETE')?.[0]).toBe('http://localhost:8000/watches/1')
     expect(within(panel()).queryByRole('list', { name: 'Arquivos observados' })).not.toBeInTheDocument()
+  })
+
+  it('shows the CRITICAL count with a link to those logs', async () => {
+    watchApi([watch({ critical_lines: 3, last_critical_message: 'disk full' })])
+    renderWithProviders(<ImportsPage />)
+
+    const link = await within(panel()).findByRole('link', { name: '3 críticos' })
+    expect(link).toHaveAttribute('href', '/logs?import_id=7&level=CRITICAL')
+    // jsdom has no Notification API.
+    expect(within(panel()).getByText(/Alertas indisponíveis/)).toBeInTheDocument()
   })
 })

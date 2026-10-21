@@ -15,6 +15,10 @@ const shortDateYear = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: '
 const shortDateHour = new Intl.DateTimeFormat(LOCALE, {
   day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE,
 })
+const hourOnly = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
+const clock = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: TIME_ZONE })
+const dateTimeSeconds = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'medium', timeZone: TIME_ZONE })
+const longDate = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TIME_ZONE })
 const integer = new Intl.NumberFormat(LOCALE)
 const compact = new Intl.NumberFormat(LOCALE, { notation: 'compact', maximumFractionDigits: 1 })
 const percent = new Intl.NumberFormat(LOCALE, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 2 })
@@ -32,9 +36,46 @@ export const formatNumber = (value: number) => integer.format(value)
 export const formatCompact = (value: number) => compact.format(value)
 export const formatPercent = (ratio: number) => percent.format(Number.isFinite(ratio) ? ratio : 0)
 
-/** Axis label for a time bucket: "05/10" or, with the year, "05/10/26" (day); "05/10, 17:00" (hour). */
-export function formatBucket(value: string, bucket: 'hour' | 'day', withYear = false): string {
-  if (bucket === 'hour') return shortDateHour.format(toDate(value))
+/** "17:00" (UTC): hour labels on a chart that covers a single day. */
+export const formatHour = (value: string) => hourOnly.format(toDate(value))
+/** "05/10/2026" for a "2026-10-05" day key. */
+export const formatDay = (day: string) => longDate.format(toDate(`${day}T00:00:00Z`))
+
+/** UTC calendar day ("2026-10-05") holding an ISO instant. */
+export const utcDay = (iso: string) => toDate(iso).toISOString().slice(0, 10)
+
+/** [start, end) of a UTC day as ISO instants, the shape the API's start/end filters take. */
+export function dayRange(day: string): { start: string; end: string } {
+  const start = toDate(`${day}T00:00:00Z`)
+  return { start: start.toISOString(), end: new Date(start.getTime() + 86_400_000).toISOString() }
+}
+
+/** The day before (-1) or after (+1) a "2026-10-05" day key. */
+export function shiftDay(day: string, delta: number): string {
+  return new Date(toDate(`${day}T00:00:00Z`).getTime() + delta * 86_400_000).toISOString().slice(0, 10)
+}
+
+export type BucketSize = 'second' | 'minute' | 'hour' | 'day'
+
+/** Length of each bucket in milliseconds. */
+export const BUCKET_MS: Record<BucketSize, number> = { second: 1000, minute: 60_000, hour: 3_600_000, day: 86_400_000 }
+/** "segundo", "minuto"... for "Por minuto (UTC)". */
+export const BUCKET_LABEL: Record<BucketSize, string> = { second: 'segundo', minute: 'minuto', hour: 'hora', day: 'dia' }
+
+/** Tooltip title for a bucket: the full date, with seconds when buckets are seconds. */
+export function formatBucketTitle(value: string, bucket: BucketSize): string {
+  if (bucket === 'second') return dateTimeSeconds.format(toDate(value))
+  if (bucket === 'day') return shortDateYear.format(toDate(value))
+  return dateTime.format(toDate(value))
+}
+
+/**
+ * Axis label for a time bucket: "05/10" or, with the year, "05/10/26" (day); "05/10, 17:00" (hour and minute);
+ * "17:46:57" (second).
+ */
+export function formatBucket(value: string, bucket: BucketSize, withYear = false): string {
+  if (bucket === 'second') return clock.format(toDate(value))
+  if (bucket === 'hour' || bucket === 'minute') return shortDateHour.format(toDate(value))
   return (withYear ? shortDateYear : shortDate).format(toDate(value))
 }
 
@@ -81,7 +122,8 @@ export function isoToLocalInput(iso: string | null): string {
   if (!iso) return ''
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 16)
+  // Seconds only when set (e.g. after zooming into the chart), so whole minutes stay short.
+  return date.toISOString().slice(0, date.getUTCSeconds() ? 19 : 16)
 }
 
 /** <input type="datetime-local"> value, read as UTC -> ISO. */

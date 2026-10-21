@@ -93,7 +93,7 @@ class StatsOut(BaseModel):
     error_rate: float
     first_timestamp: datetime | None
     last_timestamp: datetime | None
-    bucket: Literal["hour", "day"]
+    bucket: Literal["second", "minute", "hour", "day"]
     timeseries: list[TimeseriesPoint]
     by_service: list[ServiceCount]
     by_category: list[CategoryCount]
@@ -168,6 +168,10 @@ class LogWatchOut(BaseModel):
     parsed_lines: int
     invalid_lines: int
     last_error: str | None
+    # CRITICAL lines read so far; the frontend notifies when it grows.
+    critical_lines: int
+    last_critical_message: str | None
+    last_critical_at: datetime | None
     created_at: datetime
     last_checked_at: datetime | None
     next_check_at: datetime

@@ -75,6 +75,33 @@ def test_first_poll_imports_the_file_and_later_polls_only_new_lines(client, root
     assert client.get(f"/logs?import_id={body['import_id']}").json()["items"]
 
 
+def test_critical_lines_are_counted_with_the_latest_message(client, root):
+    write(root / "app.log", LINES, "w")
+    body = create(client).json()
+    assert body["critical_lines"] == 0
+    assert body["last_critical_message"] is None
+
+    poll(body["id"])
+    assert client.get(f"/watches/{body['id']}").json()["critical_lines"] == 0
+
+    write(root / "app.log", [
+        "2026-10-05T19:00:00+00:00 CRITICAL [payments] disk full on /var/lib/db",
+        "2026-10-05T19:00:01+00:00 INFO [search] request ok",
+        "2026-10-05T19:00:02+00:00 CRITICAL [auth] token signing key missing",
+    ])
+    poll(body["id"])
+    out = client.get(f"/watches/{body['id']}").json()
+    assert out["critical_lines"] == 2
+    assert out["last_critical_message"] == "token signing key missing"
+    assert out["last_critical_at"] == "2026-10-05T19:00:02Z"
+
+    write(root / "app.log", ["2026-10-05T19:01:00+00:00 ERROR [auth] retry failed"])
+    poll(body["id"])
+    out = client.get("/watches").json()[0]
+    assert out["critical_lines"] == 2
+    assert out["last_critical_message"] == "token signing key missing"
+
+
 def test_partial_last_line_waits_for_its_line_break(client, root):
     path = root / "app.log"
     write(path, LINES[:1], "w")

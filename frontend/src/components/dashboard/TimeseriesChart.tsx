@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from 'recharts'
+import { Area, AreaChart, CartesianGrid, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from 'recharts'
 import { LEVELS, type Bucket, type Level, type TimeseriesPoint } from '../../api/types'
-import { formatBucket, formatCompact, formatDateTime, formatNumber, spansYears } from '../../lib/format'
+import { BUCKET_LABEL, formatBucket, formatBucketTitle, formatCompact, formatHour, formatNumber, spansYears } from '../../lib/format'
 import { LEVEL_META, LEVELS_BY_SEVERITY, levelVars } from '../../lib/levels'
 import { ChartTooltip } from './ChartTooltip'
 
@@ -10,13 +10,26 @@ interface TimeseriesChartProps {
   bucket: Bucket
   /** Opens the logs of one bucket. */
   onSelectBucket: (bucketStart: string) => void
+  /** The points cover a single day: label the axis with the hour only. */
+  singleDay?: boolean
+  /** Dragging across the chart selects [first, last] buckets to zoom into; without it, a drag is a click. */
+  onZoom?: (firstBucket: string, lastBucket: string) => void
 }
 
 /** Most severe at the bottom of the stack so errors sit on the baseline and stay readable. */
 const STACK_ORDER = LEVELS_BY_SEVERITY
 
-export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChartProps) {
+export function TimeseriesChart({ data, bucket, onSelectBucket, singleDay = false, onZoom }: TimeseriesChartProps) {
   const [hidden, setHidden] = useState<Set<Level>>(() => new Set())
+  // Bucket labels where a drag started and where it is now (ISO strings sort chronologically).
+  const [drag, setDrag] = useState<{ from: string; to: string } | null>(null)
+  const finishDrag = () => {
+    if (!drag) return
+    setDrag(null)
+    const [first, last] = drag.from <= drag.to ? [drag.from, drag.to] : [drag.to, drag.from]
+    if (onZoom && first !== last) onZoom(first, last)
+    else onSelectBucket(drag.from)
+  }
   const withYear = bucket === 'day' && spansYears(data.map((point) => point.bucket))
   const toggle = (level: Level) =>
     setHidden((current) => {
@@ -43,20 +56,25 @@ export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChar
           </button>
         ))}
       </div>
-      <div className="chart" role="img" aria-label={`Volume de logs por nível, agrupado por ${bucket === 'hour' ? 'hora' : 'dia'}`}>
+      <div className="chart" role="img" aria-label={`Volume de logs por nível, agrupado por ${BUCKET_LABEL[bucket]}`}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}
             margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
-            onClick={(state) => {
-              if (state?.activeLabel) onSelectBucket(String(state.activeLabel))
+            onMouseDown={(state) => {
+              if (state?.activeLabel) setDrag({ from: String(state.activeLabel), to: String(state.activeLabel) })
             }}
-            style={{ cursor: 'pointer' }}
+            onMouseMove={(state) => {
+              if (drag && state?.activeLabel) setDrag({ ...drag, to: String(state.activeLabel) })
+            }}
+            onMouseUp={finishDrag}
+            onMouseLeave={() => setDrag(null)}
+            style={{ cursor: onZoom ? 'crosshair' : 'pointer', userSelect: 'none' }}
           >
             <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
             <XAxis
               dataKey="bucket"
-              tickFormatter={(value: string) => formatBucket(value, bucket, withYear)}
+              tickFormatter={(value: string) => (singleDay ? formatHour(value) : formatBucket(value, bucket, withYear))}
               stroke="var(--chart-axis)"
               tick={{ fill: 'var(--chart-axis)' }}
               tickLine={false}
@@ -87,6 +105,9 @@ export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChar
                 isAnimationActive={false}
               />
             ))}
+            {drag && drag.from !== drag.to && (
+              <ReferenceArea x1={drag.from} x2={drag.to} fill="var(--accent)" fillOpacity={0.12} stroke="var(--accent)" strokeOpacity={0.4} />
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -103,7 +124,7 @@ export function TimeseriesChart({ data, bucket, onSelectBucket }: TimeseriesChar
             <tbody>
               {data.map((point) => (
                 <tr key={point.bucket}>
-                  <td>{formatDateTime(point.bucket)}</td>
+                  <td>{formatBucketTitle(point.bucket, bucket)}</td>
                   {LEVELS.map((level) => <td className="num" key={level}>{formatNumber(point[level])}</td>)}
                 </tr>
               ))}
@@ -122,7 +143,7 @@ function SeriesTooltip({ active, payload, label, bucket, hidden }: TooltipProps<
   const total = visible.reduce((sum, level) => sum + point[level], 0)
   return (
     <ChartTooltip
-      title={bucket === 'hour' ? formatDateTime(String(label)) : formatBucket(String(label), 'day', true)}
+      title={formatBucketTitle(String(label), bucket)}
       rows={[
         ...visible.map((level) => ({ key: level, label: level, value: formatNumber(point[level]), color: LEVEL_META[level].color })),
         { key: 'total', label: 'Total', value: formatNumber(total) },

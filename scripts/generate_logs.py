@@ -2,6 +2,7 @@
 
 Usage:
     python scripts/generate_logs.py --lines 200000 --format text --out samples/app.log
+    python scripts/generate_logs.py --lines 200000 --days 14 --out samples/history.log
     python scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
     python scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
     python scripts/generate_logs.py --lines 50000 --format http --out samples/access.log
@@ -18,6 +19,10 @@ Usage:
 
 --format http writes Apache/Nginx combined access lines (normal traffic, vulnerability
 scans and the WordPress pingback flood), whatever the scenario.
+
+Timestamps are the real clock time at which each line is written, with the
+machine's UTC offset. --days N instead spreads the lines over the last N days,
+ending now (useful to fill the dashboard with history).
 
 --follow N keeps appending N lines per second (timestamped now) until Ctrl+C,
 to try the live watch of a file.
@@ -101,9 +106,10 @@ def public_ip() -> str:
     return ".".join(str(random.randint(1, 223)) for _ in range(4))
 
 
-def values() -> dict[str, object]:
+def values(service: str) -> dict[str, object]:
     """Fresh random values for one message (a burst reuses the same ones)."""
-    pod = random.choice(K8S_SERVICES)
+    # Kubernetes pods are named after their service (orders-07 belongs to orders).
+    pod = service if service in K8S_SERVICES else random.choice(K8S_SERVICES)
     return {
         "key": f"{random.randrange(16**6):06x}",
         "n": random.randint(1, 9999),
@@ -250,7 +256,7 @@ def events(scenario: str) -> Iterator[Event]:
         templates, services = SCENARIOS[random.choices(names, weights)[0]]
         template = random.choices(templates, [t.weight for t in templates])[0]
         service = random.choice(template.services or services)
-        message = template.text.format(**values())
+        message = template.text.format(**values(service))
         for _ in range(random.randint(*template.burst)):
             yield Event(template.level, service, message)
 
@@ -326,12 +332,20 @@ def make_writer(f, fmt: str, scenario: str, invalid_ratio: float) -> Callable[[d
     return write
 
 
+def now() -> datetime:
+    """Current time with the machine's UTC offset (e.g. -03:00), as a real log would carry it."""
+    return datetime.now(timezone.utc).astimezone()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lines", type=int, default=100_000)
     parser.add_argument("--format", choices=["text", "json", "csv", "http"], default="text")
     parser.add_argument("--scenario", choices=["mixed", *SCENARIOS], default="mixed")
-    parser.add_argument("--days", type=int, default=14, help="time span covered by the logs")
+    parser.add_argument(
+        "--days", type=float, default=0,
+        help="spread the lines over the last N days, ending now (default 0: each line gets the clock time it is written)",
+    )
     parser.add_argument("--invalid-ratio", type=float, default=0.005)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=42)
@@ -340,13 +354,13 @@ def main() -> None:
 
     random.seed(args.seed)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    start = datetime.now(timezone.utc) - timedelta(days=args.days)
+    start = now() - timedelta(days=args.days)
     step = timedelta(days=args.days) / max(args.lines, 1)
 
     with args.out.open("w", encoding="utf-8", newline="") as f:
         write = make_writer(f, args.format, args.scenario, args.invalid_ratio)
         for i in range(args.lines):
-            write(start + step * i)
+            write(start + step * i if args.days else now())
 
         print(f"wrote {args.lines} lines to {args.out}")
         if args.follow <= 0:
@@ -355,7 +369,7 @@ def main() -> None:
         try:
             while True:
                 for _ in range(args.follow):
-                    write(datetime.now(timezone.utc))
+                    write(now())
                 f.flush()
                 time.sleep(1)
         except KeyboardInterrupt:

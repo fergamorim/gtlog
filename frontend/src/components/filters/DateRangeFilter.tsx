@@ -9,6 +9,8 @@ interface DateRangeFilterProps {
 
 const HOUR = 3_600_000
 const PRESETS = [
+  { label: '5 min', title: 'Últimos 5 minutos', ms: 5 * 60_000 },
+  { label: '15 min', title: 'Últimos 15 minutos', ms: 15 * 60_000 },
   { label: '1 h', title: 'Última hora', ms: HOUR },
   { label: '24 h', title: 'Últimas 24 horas', ms: 24 * HOUR },
   { label: '7 d', title: 'Últimos 7 dias', ms: 7 * 24 * HOUR },
@@ -28,8 +30,8 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
   }
 
   const applyPreset = (ms: number) => {
-    // Round to the minute so the URL (and the query key) stays stable and readable.
-    const now = Math.floor(Date.now() / 60_000) * 60_000
+    // Round to the second so the URL (and the query key) stays stable and readable.
+    const now = Math.floor(Date.now() / 1000) * 1000
     commit(new Date(now - ms).toISOString(), null)
   }
 
@@ -40,6 +42,7 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
         <input
           className="input"
           type="datetime-local"
+          step={1}
           aria-label="Data inicial"
           value={isoToLocalInput(start)}
           max={isoToLocalInput(end) || undefined}
@@ -48,6 +51,7 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
         <input
           className="input"
           type="datetime-local"
+          step={1}
           aria-label="Data final (exclusiva)"
           value={isoToLocalInput(end)}
           min={isoToLocalInput(start) || undefined}

@@ -48,7 +48,8 @@ describe('useImportCompletionWatcher', () => {
 describe('useWatchActivity', () => {
   const watch = (parsed: number): LogWatch => ({
     id: 1, path: 'live.log', interval_seconds: 5, active: true, import_id: 3, format: 'text', offset: 0,
-    parsed_lines: parsed, invalid_lines: 0, last_error: null, created_at: '2026-10-05T17:00:00Z',
+    parsed_lines: parsed, invalid_lines: 0, last_error: null, critical_lines: 0, last_critical_message: null, last_critical_at: null,
+    created_at: '2026-10-05T17:00:00Z',
     last_checked_at: null, next_check_at: '2026-10-05T17:00:00Z',
   })
 

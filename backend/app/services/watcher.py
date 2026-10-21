@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import ImportJob, ImportStatus, LogWatch
+from app.models import ImportJob, ImportStatus, LogLevel, LogWatch
 from app.parsers import LineParser, detect_parser, parser_by_name
 from app.services.importer import (
     BATCH_SIZE,
@@ -43,6 +43,8 @@ MAX_POLL_BYTES = 16 * 1024 * 1024
 DETECT_SAMPLE_BYTES = 1024 * 1024
 # Bytes from the start of the file fingerprinted to detect rotation (see _same_head).
 HEAD_BYTES = 1024
+# Enough of the latest CRITICAL message for a notification body.
+CRITICAL_MESSAGE_CHARS = 500
 TICK_SECONDS = 1.0
 LIST_FOLDER_LIMIT = 1000
 DUE_LIMIT = 20
@@ -299,7 +301,8 @@ def _read_new_lines(db: Session, watch: LogWatch) -> bool:
         text = text.removeprefix("﻿")
 
     is_header = getattr(parser, "is_header", None)
-    total = parsed = invalid = 0
+    total = parsed = invalid = critical = 0
+    last_critical = None
     batch: list[tuple] = []
     for line in clean_lines(text.split("\n")):
         entry = parser.parse(line)
@@ -311,6 +314,9 @@ def _read_new_lines(db: Session, watch: LogWatch) -> bool:
         else:
             parsed += 1
             batch.append(to_row(watch.import_id, entry, line))
+            if entry.level == LogLevel.CRITICAL:
+                critical += 1
+                last_critical = entry
         if len(batch) >= BATCH_SIZE:
             copy_rows(db, batch)
             batch = []
@@ -326,6 +332,10 @@ def _read_new_lines(db: Session, watch: LogWatch) -> bool:
             finished_at=datetime.now(UTC),
         )
     )
+    if last_critical is not None:
+        watch.critical_lines += critical
+        watch.last_critical_message = last_critical.message[:CRITICAL_MESSAGE_CHARS]
+        watch.last_critical_at = last_critical.timestamp
     watch.offset += consumed
     watch.last_error = None
     if watch.head_size < HEAD_BYTES:

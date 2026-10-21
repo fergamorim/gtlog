@@ -35,6 +35,7 @@ Filtros (todos opcionais, combináveis):
 | `category` | `category=timeout` | Repetível; cada valor até 50 caracteres. |
 | `import_id` | `import_id=3` | Restringe a uma importação. |
 | `start`, `end` | `start=2026-10-01T00:00:00Z` | Intervalo de `timestamp`; `start` inclusivo, `end` exclusivo. |
+| `status` | `status=404&status=5xx` | Repetível; código HTTP exato (100 a 599) ou classe `1xx` a `5xx`. Registros sem código ficam de fora quando o filtro é usado. |
 | `q` | `q=timeout pay` | Busca textual (full-text em mensagem e serviço); até 200 caracteres. Ver regras abaixo. |
 | `limit` | `limit=100` | 1 a 500, padrão 100. |
 | `cursor` | valor de `next_cursor` | Paginação por cursor (keyset); opaco para o cliente. |
@@ -57,7 +58,7 @@ Resposta:
 
 ```json
 {"items": [{"id": 10, "import_id": 1, "timestamp": "...", "level": "ERROR", "service": "payments",
-            "category": "timeout", "message": "...", "raw": "..."}],
+            "category": "timeout", "status_code": 500, "message": "...", "raw": "..."}],
  "next_cursor": "opaque-string-or-null"}
 ```
 
@@ -68,7 +69,24 @@ Resposta:
 
 ## Facetas para filtros
 
-`GET /logs/facets` → `{"services": ["auth", ...], "categories": ["timeout", ...]}` (valores distintos, ordenados).
+`GET /logs/facets` → `{"services": ["auth", ...], "categories": ["timeout", ...], "status_codes": [200, 404, 500]}`
+(valores distintos, ordenados).
+
+## Códigos HTTP e níveis
+
+`status_code` é o código HTTP da linha, ou `null` quando ela não tem um. Ele vem do access log, das chaves
+`status`, `status_code`, `statusCode`, `http_status` e `response_code` em JSON e CSV, e de trechos como
+`status=404` ou `status: 503` em texto e syslog. Quando a linha não traz nível próprio, o nível sai do código:
+
+| Código | Nível | Exemplos |
+| --- | --- | --- |
+| 1xx | DEBUG | 100 Continue, 101 Switching Protocols |
+| 2xx, 3xx | INFO | 200 OK, 201 Created, 204, 301, 304 |
+| 4xx | WARNING | 400, 401 Unauthorized, 403, 404 Not Found, 429 |
+| 500, 501 e demais 5xx | ERROR | 500 Internal Server Error |
+| 502, 503, 504 | CRITICAL | 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout (serviço fora do ar) |
+
+No access log o nível sempre vem dessa tabela.
 
 ## Estatísticas do dashboard
 

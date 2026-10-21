@@ -24,11 +24,11 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 | Processamento e classificação | Detecção automática entre 5 formatos ([lista abaixo](#formatos-de-log-suportados)). Nível normalizado (WARN, err, fatal, códigos HTTP, severidade syslog) e categoria por palavras-chave da mensagem. Linhas inválidas são contadas e ignoradas, sem derrubar a importação. |
 | Armazenamento | PostgreSQL 16, ingestão com `COPY` em lotes de 5.000 linhas, índices para os filtros e para a ordenação. |
 | Tabela responsiva | Colunas no desktop e cartões no celular; clique em uma linha para ver a linha original num painel lateral. |
-| Filtros por nível, data e conteúdo | Nível, período (com atalhos 1 h / 24 h / 7 d / 30 d), serviço, categoria, código HTTP (exato, como `404`, ou classe, como `5xx`) e importação. Combináveis e guardados na URL, então dá para compartilhar o link de uma visão. |
+| Filtros por nível, data e conteúdo | Nível, período (com atalhos 5 min / 15 min / 1 h / 24 h / 7 d / 30 d), serviço, categoria, código HTTP (exato, como `404`, ou classe, como `5xx`) e importação. Combináveis e guardados na URL, então dá para compartilhar o link de uma visão. |
 | Busca textual | Full-text do Postgres na mensagem e no serviço, por prefixo (`pay` encontra `payments`). Aceita frase exata entre aspas, `or` e exclusão com `-`. |
 | Scroll infinito | Paginação por cursor (keyset), 200 registros por página, com virtualização: só as linhas visíveis ficam no DOM. |
 | Dashboard | Total, erros + críticos, taxa de erro e período coberto; distribuição por nível; top serviços (com erros em destaque) e categorias; erros mais frequentes agrupados. |
-| Tendências | Série temporal por nível, agrupada por hora (até 3 dias) ou por dia, e um segundo gráfico com um dia escolhido no calendário, hora a hora. Clicar em um ponto, nível, serviço ou erro abre a tabela já filtrada. |
+| Tendências | Série temporal por nível, agrupada por segundo (até 5 min), minuto (até 3 h), hora (até 3 dias) ou dia; arraste sobre o gráfico para aproximar um trecho. Um segundo gráfico mostra um dia escolhido no calendário, hora a hora. Clicar em um ponto, nível, serviço ou erro abre a tabela já filtrada. |
 
 Também: tema claro/escuro, indicador de status da API, estados de carregando/vazio/erro com "tentar novamente" e
 mensagens de erro em português.

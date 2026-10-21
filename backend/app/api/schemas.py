@@ -93,7 +93,7 @@ class StatsOut(BaseModel):
     error_rate: float
     first_timestamp: datetime | None
     last_timestamp: datetime | None
-    bucket: Literal["hour", "day"]
+    bucket: Literal["second", "minute", "hour", "day"]
     timeseries: list[TimeseriesPoint]
     by_service: list[ServiceCount]
     by_category: list[CategoryCount]

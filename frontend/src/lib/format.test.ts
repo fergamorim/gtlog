@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayRange, formatBucket, formatDateTime, formatDay, formatHour, formatInterval, shiftDay, utcDay, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
+import { dayRange, formatBucket, formatBucketTitle, formatDateTime, formatDay, formatHour, formatInterval, shiftDay, utcDay, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
 
 // These hold in any machine time zone: the UI always shows UTC (run with TZ=America/Sao_Paulo to check).
 describe('dates are shown in UTC', () => {
@@ -58,5 +58,19 @@ describe('day helpers (UTC)', () => {
   it('formats the day and the hour', () => {
     expect(formatDay('2026-10-05')).toBe('05/10/2026')
     expect(formatHour('2026-10-05T07:00:00Z')).toBe('07:00')
+  })
+})
+
+describe('fine-grained buckets', () => {
+  it('labels seconds with the clock and minutes with date and time', () => {
+    expect(formatBucket('2026-10-21T14:33:17Z', 'second')).toBe('14:33:17')
+    expect(formatBucket('2026-10-21T14:33:00Z', 'minute')).toBe('21/10, 14:33')
+    expect(formatBucketTitle('2026-10-21T14:33:17Z', 'second')).toBe('21/10/2026, 14:33:17')
+  })
+
+  it('keeps seconds in the period inputs only when they are set', () => {
+    expect(isoToLocalInput('2026-10-21T14:33:17Z')).toBe('2026-10-21T14:33:17')
+    expect(isoToLocalInput('2026-10-21T14:33:00Z')).toBe('2026-10-21T14:33')
+    expect(localInputToIso('2026-10-21T14:33:17')).toBe('2026-10-21T14:33:17.000Z')
   })
 })

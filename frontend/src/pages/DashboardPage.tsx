@@ -8,12 +8,13 @@ import { LevelDistribution } from '../components/dashboard/LevelDistribution'
 import { TimeseriesChart } from '../components/dashboard/TimeseriesChart'
 import { TopErrors } from '../components/dashboard/TopErrors'
 import { FilterBar } from '../components/filters/FilterBar'
+import { Icon } from '../components/ui/Icon'
 import { EmptyState, ErrorState } from '../components/ui/StateViews'
 import { useUrlFilters } from '../hooks/useUrlFilters'
 import { countActiveFilters, DASHBOARD_FILTER_KEYS, filtersSearch, messageToQuery, pickFilters, type LogFilters } from '../lib/filters'
+import { BUCKET_LABEL, BUCKET_MS } from '../lib/format'
 import { ERROR_LEVELS } from '../lib/levels'
 
-const BUCKET_MS = { hour: 3_600_000, day: 86_400_000 }
 
 export function DashboardPage() {
   const { filters, setFilters, clearFilters } = useUrlFilters()
@@ -55,13 +56,23 @@ export function DashboardPage() {
           <Panel
             className="span-2"
             title="Volume ao longo do tempo"
-            hint={`Por ${data.bucket === 'hour' ? 'hora' : 'dia'} (UTC) · clique em um ponto para abrir os logs`}
+            hint={`Por ${BUCKET_LABEL[data.bucket]} (UTC) · arraste para aproximar, clique para abrir os logs`}
           >
+            {(filters.start || filters.end) && (
+              <div className="chart-zoom">
+                <button type="button" className="btn btn--sm" onClick={() => setFilters({ ...filters, start: null, end: null })}>
+                  <Icon name="close" size={14} /> Ver todo o período
+                </button>
+              </div>
+            )}
             <TimeseriesChart
               data={data.timeseries}
               bucket={data.bucket}
               onSelectBucket={(start) =>
                 openLogs({ start, end: new Date(Date.parse(start) + BUCKET_MS[data.bucket]).toISOString() })
+              }
+              onZoom={(first, last) =>
+                setFilters({ ...filters, start: first, end: new Date(Date.parse(last) + BUCKET_MS[data.bucket]).toISOString() })
               }
             />
           </Panel>

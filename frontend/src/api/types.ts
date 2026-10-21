@@ -47,7 +47,7 @@ export interface Facets {
   status_codes: number[]
 }
 
-export type Bucket = 'hour' | 'day'
+export type Bucket = 'second' | 'minute' | 'hour' | 'day'
 
 export type TimeseriesPoint = LevelCounts & { bucket: string }
 

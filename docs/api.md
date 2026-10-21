@@ -129,7 +129,8 @@ No access log o nível sempre vem dessa tabela.
 
 `GET /stats` aceita os mesmos filtros de `/logs` (exceto `cursor` e `limit`), além de:
 
-- `bucket`: `hour` ou `day`; padrão automático (`hour` se o intervalo tiver até 3 dias, senão `day`).
+- `bucket`: `second`, `minute`, `hour` ou `day`; padrão automático, o mais fino que cabe no período (o filtrado ou,
+  sem `start`/`end`, o dos dados): `second` até 5 minutos, `minute` até 3 horas, `hour` até 3 dias, senão `day`.
 
 Resposta:
 

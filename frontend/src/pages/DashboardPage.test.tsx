@@ -67,4 +67,30 @@ describe('DashboardPage', () => {
     expect(day).toHaveValue('2026-10-04')
     await waitFor(() => expect(hourlyCalls().slice(-1)[0]?.searchParams.get('start')).toBe('2026-10-04T00:00:00.000Z'))
   })
+
+  it('names the automatic bucket and resets a zoomed period', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+    const stats = {
+      ...EMPTY_STATS, total: 2, bucket: 'second',
+      by_level: { DEBUG: 0, INFO: 2, WARNING: 0, ERROR: 0, CRITICAL: 0 },
+      first_timestamp: '2026-10-21T14:33:15Z', last_timestamp: '2026-10-21T14:33:17Z',
+      timeseries: [15, 16, 17].map((s) => ({ bucket: `2026-10-21T14:33:${s}Z`, DEBUG: 0, INFO: s === 16 ? 0 : 1, WARNING: 0, ERROR: 0, CRITICAL: 0 })),
+    }
+    const fetch = mockFetch((url) => {
+      if (url.pathname === '/stats') return json(stats)
+      if (url.pathname === '/logs/facets') return json({ services: [], categories: [], status_codes: [] })
+      return json([])
+    })
+    renderWithProviders(<DashboardPage />, { route: '/dashboard?start=2026-10-21T14:33:15Z&end=2026-10-21T14:33:18Z' })
+
+    const panel = await screen.findByRole('region', { name: 'Volume ao longo do tempo' })
+    expect(within(panel).getByText(/Por segundo \(UTC\)/)).toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: /Ver todo o período/ }))
+
+    await waitFor(() => {
+      const last = fetch.mock.calls.map(([input]) => new URL(String(input))).filter((u) => u.pathname === '/stats').slice(-1)[0]
+      expect(last.searchParams.has('start')).toBe(false)
+    })
+    expect(within(panel).queryByRole('button', { name: /Ver todo o período/ })).not.toBeInTheDocument()
+  })
 })

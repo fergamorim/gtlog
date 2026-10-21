@@ -10,11 +10,15 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 
 | Dashboard | Logs |
 | --- | --- |
-| ![Dashboard com indicadores, volume por nível e filtros](docs/screenshots/dashboard.png) | ![Tabela de logs com filtros, busca e contagem](docs/screenshots/logs.png) |
+| ![Dashboard com indicadores, volume ao longo do tempo, volume por hora em um dia, níveis, serviços, categorias e erros frequentes](docs/screenshots/dashboard.png) | ![Tabela de logs com filtros, busca, código HTTP e contagem](docs/screenshots/logs.png) |
 
-| Importação | Celular, tema escuro |
+| Importação e observação em tempo real | Seletor do arquivo observado |
 | --- | --- |
-| ![Tela de importação com importação concluída e contadores](docs/screenshots/importar.png) | ![Logs no celular](docs/screenshots/mobile-logs-escuro.png) ![Dashboard no celular](docs/screenshots/mobile-dashboard-escuro.png) |
+| ![Tela Importar com um arquivo observado, alertas ativos e um alerta de erros críticos no canto](docs/screenshots/importar.png) | ![Painel para escolher o arquivo dentro da pasta compartilhada com a API](docs/screenshots/observar-selecionar-arquivo.png) |
+
+| Zoom no volume, agrupado por segundo | Celular, tema escuro |
+| --- | --- |
+| ![Gráfico de volume dos últimos 2 minutos de um arquivo observado, um ponto por segundo](docs/screenshots/dashboard-segundos.png) | ![Logs no celular](docs/screenshots/mobile-logs-escuro.png) ![Dashboard no celular](docs/screenshots/mobile-dashboard-escuro.png) |
 
 ## Funcionalidades
 
@@ -29,9 +33,31 @@ categorias e erros mais frequentes. Backend em FastAPI + PostgreSQL 16, frontend
 | Scroll infinito | Paginação por cursor (keyset), 200 registros por página, com virtualização: só as linhas visíveis ficam no DOM. |
 | Dashboard | Total, erros + críticos, taxa de erro e período coberto; distribuição por nível; top serviços (com erros em destaque) e categorias; erros mais frequentes agrupados. |
 | Tendências | Série temporal por nível, agrupada por segundo (até 5 min), minuto (até 3 h), hora (até 3 dias) ou dia; arraste sobre o gráfico para aproximar um trecho. Um segundo gráfico mostra um dia escolhido no calendário, hora a hora. Clicar em um ponto, nível, serviço ou erro abre a tabela já filtrada. |
+| Logs em tempo real (extra) | Observação de um arquivo que cresce, como um `tail -f`, com intervalo de 1 s a 24 h, detecção de rotação e truncamento, pausa e retomada. Logs, contagem e dashboard se atualizam sozinhos. [Detalhes abaixo](#observar-um-arquivo-de-log-em-tempo-real). |
+| Alertas de erros críticos (extra) | Notificação do navegador, alerta na página e contagem no título da aba quando um arquivo observado recebe linhas `CRITICAL`. |
 
 Também: tema claro/escuro, indicador de status da API, estados de carregando/vazio/erro com "tentar novamente" e
 mensagens de erro em português.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    B[Navegador<br/>React SPA] -->|HTTP/JSON| API[api<br/>FastAPI]
+    W[web<br/>Nginx] -->|arquivos estáticos| B
+    API -->|COPY em lotes,<br/>consultas por cursor| DB[(db<br/>PostgreSQL 16)]
+    API -->|lê só as linhas novas| H["pasta do host<br/>montada em /watch"]
+```
+
+Três serviços no Docker Compose. O navegador baixa a SPA do Nginx (`web`) e conversa só com a API (`api`), que é a
+única a acessar o banco (`db`). Na API, as rotas chamam serviços (`importer`, `log_query`, `stats`, `watcher`), que
+usam os parsers e os modelos. Os logs entram por upload (processado em segundo plano) ou pela observação de arquivos
+(uma thread que relê os arquivos no intervalo escolhido); os dois caminhos usam os mesmos parsers e a mesma gravação
+com `COPY`. O PostgreSQL faz também a busca textual e as agregações do dashboard, sem serviços extras.
+
+O desenho completo, com fluxo de dados, modelo e índices, paginação, busca, estatísticas, observação em tempo real
+e alertas, está em [docs/architecture.md](docs/architecture.md); as decisões e alternativas, em
+[docs/decisions.md](docs/decisions.md).
 
 ## Como rodar (Docker)
 
@@ -162,7 +188,8 @@ Para testar com um log que cresce sozinho, o gerador acrescenta linhas continuam
 python3 scripts/generate_logs.py --lines 1000 --follow 5 --out samples/live.log   # 5 linhas/s até Ctrl+C
 ```
 
-Depois observe `live.log` com intervalo de 5 segundos e abra **Logs**.
+Depois observe `live.log` com intervalo de 5 segundos e abra **Logs**. No **Dashboard**, filtre pela importação da
+observação e use o atalho **5 min** (ou arraste sobre o gráfico) para ver o volume chegando segundo a segundo.
 
 **Alertas de erros críticos.** Com pelo menos uma observação na lista, clique em **Ativar alertas** e aceite a
 permissão do navegador. A partir daí, quando uma leitura trouxer linhas `CRITICAL`, o navegador mostra uma
@@ -177,7 +204,7 @@ desligue o Foco (Não Perturbe) e, no Safari, confira **Ajustes › Sites › No
 
 ## Desenvolvimento local (sem Docker para API e web)
 
-Requer Python 3.12 e Node 22. O Postgres pode continuar no Compose:
+Requer Python 3.12 (3.11 no mínimo; o 3.9 do macOS não funciona) e Node 22. O Postgres pode continuar no Compose:
 
 ```bash
 docker compose up -d db
@@ -187,7 +214,7 @@ Backend (porta 8000; o padrão de `DATABASE_URL` já aponta para `localhost:5432
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
@@ -218,16 +245,42 @@ Variáveis de ambiente:
 
 ## Testes e lint
 
-Backend: os testes de API precisam de um Postgres em `localhost:5432` (por exemplo, `docker compose up -d db`).
-Eles usam o banco `gtlog_test`, criado automaticamente e recriado a cada execução, então não apagam os dados de
-desenvolvimento.
+### Backend: rodar os testes localmente
+
+Pré-requisitos:
+
+- **Python 3.11 ou mais novo** (o projeto usa 3.12, o mesmo da imagem Docker e da CI). O Python 3.9 que vem no
+  macOS não serve: a importação dos testes falha com `TypeError: unsupported operand type(s) for |` por causa de
+  anotações como `str | None`, e o código também usa `datetime.UTC`, que só existe a partir do 3.11. No macOS,
+  instale com `brew install python@3.12` (ou pelo [python.org](https://www.python.org/downloads/)).
+- **Postgres rodando antes do `pytest`.** Os testes não sobem banco sozinhos: eles conectam em `localhost:5432`
+  com o usuário `gtlog`/`gtlog`. Suba só o serviço `db` do Compose e espere ele ficar saudável:
+
+```bash
+docker compose up -d --wait db
+```
+
+Sem o banco, o `pytest` para antes de rodar qualquer teste, com `ImportError while loading conftest` seguido de
+`(psycopg.OperationalError) connection failed: ... port 5432 failed: Connection refused`. Os testes usam o banco `gtlog_test` no mesmo servidor, criado automaticamente na primeira execução e com
+as tabelas recriadas a cada execução, então não apagam os dados de desenvolvimento (banco `gtlog`). Para usar outro
+servidor, defina `TEST_DATABASE_URL`.
+
+Depois, a partir da raiz do projeto:
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
+python3.12 -m venv .venv          # ou python3.11; não use o python3 do sistema no macOS
+source .venv/bin/activate
+python --version                  # precisa mostrar 3.11 ou mais novo
+pip install -r requirements-dev.txt   # já inclui o requirements.txt
 pytest
 ruff check .
 ```
+
+Nas próximas vezes basta `docker compose up -d --wait db`, `source .venv/bin/activate` e `pytest`. Para desligar o
+banco ao terminar: `docker compose stop db`.
+
+### Frontend e integração
 
 Frontend (Vitest + Testing Library, sem backend):
 
@@ -288,24 +341,24 @@ termina com status `FAILED` ("Formato de log não reconhecido.").
 ```text
 backend/
   app/
-    api/        rotas FastAPI e schemas (imports, logs, stats, health)
-    services/   importação (COPY), consultas com cursor, estatísticas
-    models/     ImportJob e LogEntry (SQLAlchemy) e índices
+    api/        rotas FastAPI e schemas (imports, logs, stats, watches, health)
+    services/   importação (COPY), consultas com cursor, estatísticas, observação de arquivos
+    models/     ImportJob, LogEntry e LogWatch (SQLAlchemy) e índices
     parsers/    detecção de formato, parsers, níveis e categorias
     core/       configuração e conexão com o banco
   tests/        pytest (API e parsers, com fixtures por formato)
 frontend/src/
   pages/        Dashboard, Logs, Importar
-  components/   dashboard, filtros, tabela de logs, importação, UI base
+  components/   dashboard, filtros, tabela de logs, importação e observação, alertas, UI base
   api/          cliente HTTP e hooks do TanStack Query
-  hooks/ lib/   filtros na URL, tema, formatação
-scripts/        generate_logs.py
+  hooks/ lib/   filtros na URL, tema, formatação, alertas de CRITICAL
+scripts/        generate_logs.py (logs de exemplo) e smoke_test.py (integração)
 docs/           arquitetura, decisões, API, uso de IA, screenshots
 ```
 
 ## Documentação
 
-- [docs/architecture.md](docs/architecture.md): componentes, fluxo de dados, modelo e índices, busca, frontend e tratamento de erros
+- [docs/architecture.md](docs/architecture.md): visão geral, componentes, fluxo de dados, modelo e índices, busca, estatísticas, observação em tempo real e alertas, frontend e tratamento de erros
 - [docs/decisions.md](docs/decisions.md): decisões técnicas, alternativas consideradas e limitações conhecidas
 - [docs/api.md](docs/api.md): contrato da API (rotas, parâmetros, respostas e erros)
 - [docs/ai-usage.md](docs/ai-usage.md): como a IA foi usada no desenvolvimento e o que foi revisado

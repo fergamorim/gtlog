@@ -27,6 +27,8 @@ validation and error reporting can be exercised. Attacks come in bursts:
 consecutive lines with the same source IP, as in real incidents.
 """
 
+from __future__ import annotations
+
 import argparse
 import csv
 import json

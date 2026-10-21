@@ -73,7 +73,7 @@ Desktop. Para resolver, use uma das opções:
 
 ## Gerar logs de exemplo e importar
 
-O script não tem dependências além do Python 3. Cerca de 0,5% das linhas sai propositalmente malformada, para
+O script não tem dependências além do Python 3 (3.9 ou mais novo, como o do macOS). Cerca de 0,5% das linhas sai propositalmente malformada, para
 exercitar a contagem de linhas inválidas.
 
 ```bash

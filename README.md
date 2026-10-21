@@ -169,7 +169,10 @@ notificação com o arquivo, quantos erros críticos chegaram e a última mensag
 observação mostra também o total de críticos, com link para eles. São notificações do próprio navegador (API
 `Notification`), não Web Push: elas aparecem enquanto houver uma aba do GTLog aberta, mesmo em segundo plano ou
 minimizada (o navegador pode espaçar as consultas de abas ocultas para até 1 por minuto). Funcionam em `localhost`
-ou HTTPS; com o navegador fechado não há aviso.
+ou HTTPS; com o navegador fechado não há aviso. O mesmo alerta aparece no canto da página e, se a aba estiver em
+segundo plano, o título dela ganha a contagem (`(2) GTLog`). O botão **Testar** dispara uma notificação na hora: se
+ela não aparecer, o bloqueio está no sistema. No Mac, libere o navegador em **Ajustes do Sistema › Notificações**,
+desligue o Foco (Não Perturbe) e, no Safari, confira **Ajustes › Sites › Notificações**.
 
 ## Desenvolvimento local (sem Docker para API e web)
 

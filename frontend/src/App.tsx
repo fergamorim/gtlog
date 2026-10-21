@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useImportCompletionWatcher, useWatchActivity } from './api/queries'
 import { AppHeader } from './components/layout/AppHeader'
+import { CriticalAlerts } from './components/layout/CriticalAlerts'
 import { EmptyState } from './components/ui/StateViews'
 import { useCriticalAlerts } from './hooks/useCriticalAlerts'
 
@@ -22,7 +23,7 @@ export default function App() {
   const { pathname } = useLocation()
   useImportCompletionWatcher()
   useWatchActivity()
-  useCriticalAlerts()
+  const criticalAlerts = useCriticalAlerts()
   // The logs page fills the viewport so the virtualized table owns the scroll.
   const fill = pathname === '/logs'
 
@@ -48,6 +49,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </main>
+      <CriticalAlerts alerts={criticalAlerts.alerts} onDismiss={criticalAlerts.dismiss} />
     </div>
   )
 }

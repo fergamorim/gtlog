@@ -175,5 +175,22 @@ class LogWatchOut(BaseModel):
 
 class WatchSettingsOut(BaseModel):
     root: str
+    # The same folder on the host (GTLOG_WATCH_DIR), or null when compose did not pass it.
+    host_root: str | None
     min_interval_seconds: int
     max_interval_seconds: int
+
+
+class FolderEntry(BaseModel):
+    name: str
+    # Relative to the watch root; send it back as `path` to open a folder or watch a file.
+    path: str
+    is_dir: bool
+    size: int | None
+    modified_at: datetime
+
+
+class FolderOut(BaseModel):
+    path: str
+    parent: str | None
+    entries: list[FolderEntry]

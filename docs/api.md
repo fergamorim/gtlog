@@ -26,7 +26,8 @@ Job:
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| GET | `/watches/settings` | Pasta observável (`root`) e limites do intervalo em segundos. |
+| GET | `/watches/settings` | Pasta observável (`root`), a mesma pasta no host (`host_root`, ou `null`) e limites do intervalo em segundos. |
+| GET | `/watches/files?path=logs` | Conteúdo de uma pasta dentro da pasta observável, para escolher o arquivo: `{"path", "parent", "entries": [{"name", "path", "is_dir", "size", "modified_at"}]}`. Pastas primeiro, ocultos de fora, até 1000 itens. `422` fora da pasta, `404` se não existir. |
 | POST | `/watches` | Começa a observar. Corpo JSON abaixo. Responde 201 com a observação. |
 | GET | `/watches` | Todas as observações, mais recente primeiro. |
 | GET | `/watches/{id}` | Uma observação. 404 se não existir. |
@@ -37,7 +38,8 @@ Job:
 {"path": "live.log", "interval_seconds": 10, "start_at_end": false}
 ```
 
-`path` é relativo à pasta observável (um caminho absoluto dentro dela também vale). `interval_seconds` vai de 1 a
+`path` é relativo à pasta observável; também valem um caminho absoluto dentro dela e, com `host_root` definido, o
+caminho completo no host (`/Users/voce/logs/app.log`). `interval_seconds` vai de 1 a
 86400. `start_at_end: true` ignora o conteúdo atual e importa só o que for acrescentado depois.
 
 Erros: `422` caminho fora da pasta observável (inclusive via `..` ou link simbólico) ou intervalo inválido, `404`

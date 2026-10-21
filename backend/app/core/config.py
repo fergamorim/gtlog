@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     # Folder whose files can be watched; in Docker it is a host folder mounted read-only.
     watch_root: str = "/watch"
+    # The same folder as seen on the host (GTLOG_WATCH_DIR), so a full host path can be typed too.
+    watch_host_root: str = ""
     # Off in tests, which run polls by hand instead of through the background scheduler.
     watch_scheduler: bool = True
 

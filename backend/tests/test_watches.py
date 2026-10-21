@@ -274,4 +274,48 @@ def test_delete_stops_watching_and_keeps_logs(client, root):
 
 def test_settings_expose_the_root_and_bounds(client, root):
     body = client.get("/watches/settings").json()
-    assert body == {"root": os.path.realpath(root), "min_interval_seconds": 1, "max_interval_seconds": 86_400}
+    assert body == {
+        "root": os.path.realpath(root),
+        "host_root": None,
+        "min_interval_seconds": 1,
+        "max_interval_seconds": 86_400,
+    }
+
+
+def test_full_host_path_is_translated_to_the_root(client, root, monkeypatch):
+    monkeypatch.setattr(get_settings(), "watch_host_root", "/Users/ana/kaggle/")
+    (root / "sub").mkdir()
+    write(root / "sub" / "data.log", LINES[:1], "w")
+    response = create(client, path="/Users/ana/kaggle/sub/data.log")
+    assert response.status_code == 201
+    assert response.json()["path"] == "sub/data.log"
+    assert client.get("/watches/settings").json()["host_root"] == "/Users/ana/kaggle"
+    outside = create(client, path="/Users/ana/other/data.log")
+    assert outside.status_code == 422
+    assert "/Users/ana/kaggle" in outside.json()["detail"]
+
+
+def test_files_lists_folders_first_and_hides_dotfiles(client, root):
+    (root / "logs").mkdir()
+    write(root / "logs" / "api.log", LINES[:1], "w")
+    write(root / "b.log", LINES[:2], "w")
+    write(root / "A.csv", LINES[:1], "w")
+    (root / ".hidden").write_text("x")
+
+    body = client.get("/watches/files").json()
+    assert body["path"] == ""
+    assert body["parent"] is None
+    listed = [(e["name"], e["is_dir"]) for e in body["entries"]]
+    assert listed == [("logs", True), ("A.csv", False), ("b.log", False)]
+    assert body["entries"][2]["size"] == os.path.getsize(root / "b.log")
+
+    inner = client.get("/watches/files", params={"path": "logs"}).json()
+    assert inner["parent"] == ""
+    assert [e["path"] for e in inner["entries"]] == ["logs/api.log"]
+    assert create(client, path=inner["entries"][0]["path"]).status_code == 201
+
+
+@pytest.mark.parametrize(("path", "status"), [("..", 422), ("/etc", 422), ("nope", 404), ("b.log", 404)])
+def test_files_rejects_folders_outside_or_missing(client, root, path, status):
+    write(root / "b.log", LINES[:1], "w")
+    assert client.get("/watches/files", params={"path": path}).status_code == status

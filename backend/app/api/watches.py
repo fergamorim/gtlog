@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException, Response, status
+import os
+from typing import Annotated
 
-from app.api.schemas import LogWatchIn, LogWatchOut, LogWatchUpdate, WatchSettingsOut
+from fastapi import APIRouter, HTTPException, Query, Response, status
+
+from app.api.schemas import FolderOut, LogWatchIn, LogWatchOut, LogWatchUpdate, WatchSettingsOut
 from app.core.database import DbSession
 from app.models import ImportJob, LogWatch
 from app.services import watcher
@@ -38,9 +41,21 @@ def _get_or_404(db: DbSession, watch_id: int) -> LogWatch:
 def watch_settings() -> WatchSettingsOut:
     return WatchSettingsOut(
         root=watcher.watch_root(),
+        host_root=watcher.host_root(),
         min_interval_seconds=watcher.MIN_INTERVAL_SECONDS,
         max_interval_seconds=watcher.MAX_INTERVAL_SECONDS,
     )
+
+
+@router.get("/files", response_model=FolderOut)
+def list_files(path: Annotated[str, Query(max_length=1024)] = "") -> FolderOut:
+    """Browse the watch folder to pick a file (the browser cannot reveal a local file's path)."""
+    try:
+        folder, entries = watcher.list_folder(path)
+    except watcher.WatchRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    parent = None if folder == "" else os.path.dirname(folder)
+    return FolderOut(path=folder, parent=parent, entries=entries)
 
 
 @router.post("", response_model=LogWatchOut, status_code=status.HTTP_201_CREATED)

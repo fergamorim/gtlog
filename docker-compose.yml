@@ -22,6 +22,8 @@ services:
       UPLOAD_MAX_MB: "1024"
       CORS_ORIGINS: http://localhost:5173
       WATCH_ROOT: /watch
+      # Lets the UI show and accept full host paths (e.g. /Users/voce/logs/app.log).
+      WATCH_HOST_ROOT: ${GTLOG_WATCH_DIR:-}
     volumes:
       # Host folder whose files can be watched live (read-only). Point it elsewhere with GTLOG_WATCH_DIR.
       - ${GTLOG_WATCH_DIR:-./samples}:/watch:ro

@@ -1,11 +1,11 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import type { LogWatch } from '../api/types'
+import type { Folder, LogWatch } from '../api/types'
 import { json, mockFetch, renderWithProviders } from '../test/utils'
 import { ImportsPage } from './ImportsPage'
 
-const SETTINGS = { root: '/watch', min_interval_seconds: 1, max_interval_seconds: 86_400 }
+const SETTINGS = { root: '/watch', host_root: null as string | null, min_interval_seconds: 1, max_interval_seconds: 86_400 }
 
 const watch = (overrides: Partial<LogWatch> = {}): LogWatch => ({
   id: 1, path: 'live.log', interval_seconds: 30, active: true, import_id: 7, format: 'text', offset: 120,
@@ -13,10 +13,25 @@ const watch = (overrides: Partial<LogWatch> = {}): LogWatch => ({
   last_checked_at: '2026-10-05T17:00:30Z', next_check_at: '2026-10-05T17:01:00Z', ...overrides,
 })
 
-function watchApi(watches: LogWatch[], onWrite?: (url: URL, init: RequestInit) => Response) {
+const FOLDERS: Record<string, Folder> = {
+  '': {
+    path: '', parent: null,
+    entries: [
+      { name: 'kaggle', path: 'kaggle', is_dir: true, size: null, modified_at: '2026-10-05T17:00:00Z' },
+      { name: 'app.log', path: 'app.log', is_dir: false, size: 2048, modified_at: '2026-10-05T17:00:00Z' },
+    ],
+  },
+  kaggle: {
+    path: 'kaggle', parent: '',
+    entries: [{ name: 'data.log', path: 'kaggle/data.log', is_dir: false, size: 10, modified_at: '2026-10-05T17:00:00Z' }],
+  },
+}
+
+function watchApi(watches: LogWatch[], onWrite?: (url: URL, init: RequestInit) => Response, settings = SETTINGS) {
   return mockFetch((url, init) => {
     if (init?.method && init.method !== 'GET' && onWrite) return onWrite(url, init)
-    if (url.pathname === '/watches/settings') return json(SETTINGS)
+    if (url.pathname === '/watches/settings') return json(settings)
+    if (url.pathname === '/watches/files') return json(FOLDERS[url.searchParams.get('path') ?? ''])
     if (url.pathname === '/watches') return json(watches)
     if (url.pathname === '/imports') return json([])
     return json({ detail: 'não encontrado' }, 404)
@@ -43,6 +58,23 @@ describe('ImportsPage live watch', () => {
     const list = await within(panel()).findByRole('list', { name: 'Arquivos observados' })
     expect(within(list).getByText('a cada 2 min')).toBeInTheDocument()
     expect(within(panel()).getByLabelText('Arquivo')).toHaveValue('')
+  })
+
+  it('picks a file by browsing the watch folder and fills in the full host path', async () => {
+    const fetch = watchApi([], () => json(watch(), 201), { ...SETTINGS, host_root: '/Users/ana/logs' })
+    renderWithProviders(<ImportsPage />)
+
+    expect(await within(panel()).findByText('/Users/ana/logs')).toBeInTheDocument()
+    await userEvent.click(within(panel()).getByRole('button', { name: /Selecionar arquivo/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Selecionar arquivo' })
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Abrir pasta kaggle' }))
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Selecionar data.log' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(within(panel()).getByLabelText('Arquivo')).toHaveValue('/Users/ana/logs/kaggle/data.log')
+    await userEvent.click(within(panel()).getByRole('button', { name: /Observar arquivo/ }))
+    const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')
+    expect(JSON.parse(String(post?.[1]?.body)).path).toBe('/Users/ana/logs/kaggle/data.log')
   })
 
   it('rejects an interval out of range without calling the API', async () => {

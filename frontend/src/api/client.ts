@@ -1,4 +1,4 @@
-import type { Facets, ImportJob, LogCount, LogEntry, LogPage, LogWatch, LogWatchInput, Stats, WatchSettings } from './types'
+import type { Facets, Folder, ImportJob, LogCount, LogEntry, LogPage, LogWatch, LogWatchInput, Stats, WatchSettings } from './types'
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
@@ -84,6 +84,8 @@ export const api = {
   getStats: (filters: URLSearchParams, signal?: AbortSignal) => request<Stats>(withQuery('/stats', filters), { signal }),
 
   getWatchSettings: (signal?: AbortSignal) => request<WatchSettings>('/watches/settings', { signal }),
+  listWatchFolder: (path: string, signal?: AbortSignal) =>
+    request<Folder>(withQuery('/watches/files', new URLSearchParams(path ? { path } : {})), { signal }),
   listWatches: (signal?: AbortSignal) => request<LogWatch[]>('/watches', { signal }),
   createWatch: (input: LogWatchInput) => request<LogWatch>('/watches', jsonBody('POST', input)),
   updateWatch: (id: number, changes: Partial<Pick<LogWatch, 'active' | 'interval_seconds'>>) =>

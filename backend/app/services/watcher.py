@@ -44,6 +44,7 @@ DETECT_SAMPLE_BYTES = 1024 * 1024
 # Bytes from the start of the file fingerprinted to detect rotation (see _same_head).
 HEAD_BYTES = 1024
 TICK_SECONDS = 1.0
+LIST_FOLDER_LIMIT = 1000
 DUE_LIMIT = 20
 
 
@@ -60,17 +61,74 @@ def watch_root() -> str:
     return os.path.realpath(get_settings().watch_root)
 
 
+def host_root() -> str | None:
+    """The watch folder's path on the host, when compose passed it (GTLOG_WATCH_DIR)."""
+    value = get_settings().watch_host_root.strip().rstrip("/\\")
+    return value or None
+
+
+def _from_host(path: str) -> str:
+    """A full host path inside the host folder -> the same path relative to the root."""
+    host = host_root()
+    if host and (path == host or path.startswith(host + "/")):
+        return path[len(host) :].lstrip("/") or "."
+    return path
+
+
+def _inside_root(path: str) -> tuple[str, str]:
+    """User path (relative, absolute or full host path) -> (normalized, resolved), both inside the root."""
+    root = watch_root()
+    joined = os.path.normpath(os.path.join(root, _from_host(path.strip())))
+    resolved = os.path.realpath(joined)
+    if os.path.commonpath([root, resolved]) != root or os.path.commonpath([root, joined]) != root:
+        folder = host_root() or root
+        raise WatchRejected(422, f"O arquivo precisa estar dentro da pasta observável ({folder}).")
+    return joined, resolved
+
+
+def list_folder(path: str = "") -> tuple[str, list[dict]]:
+    """Entries of a folder inside the root, folders first, hidden files left out.
+
+    Returns the folder relative to the root ("" for the root) and at most LIST_FOLDER_LIMIT entries.
+    """
+    joined, resolved = _inside_root(path or ".")
+    if not os.path.isdir(resolved):
+        raise WatchRejected(404, f"Pasta não encontrada: {path}.")
+    entries = []
+    with os.scandir(resolved) as items:
+        for item in items:
+            if item.name.startswith("."):
+                continue
+            try:
+                # Follows symlinks: a link leaving the root is listed but refused when picked.
+                is_dir = item.is_dir()
+                stat = item.stat()
+            except OSError:
+                continue
+            if not is_dir and not item.is_file():
+                continue
+            entries.append(
+                {
+                    "name": item.name,
+                    "path": os.path.relpath(os.path.join(joined, item.name), watch_root()),
+                    "is_dir": is_dir,
+                    "size": None if is_dir else stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC),
+                }
+            )
+    entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()))
+    folder = os.path.relpath(joined, watch_root())
+    return ("" if folder == "." else folder), entries[:LIST_FOLDER_LIMIT]
+
+
 def resolve_path(path: str) -> tuple[str, str]:
     """User path -> (path relative to the root, as stored; resolved absolute path).
 
     Raises WatchRejected when the path leaves the root or is not a readable regular file.
     """
     root = watch_root()
-    candidate = path.strip()
-    joined = os.path.normpath(os.path.join(root, candidate))
-    resolved = os.path.realpath(joined)
-    if os.path.commonpath([root, resolved]) != root or os.path.commonpath([root, joined]) != root:
-        raise WatchRejected(422, f"O arquivo precisa estar dentro da pasta observável ({root}).")
+    candidate = _from_host(path.strip())
+    joined, resolved = _inside_root(candidate)
     if not os.path.isfile(resolved):
         raise WatchRejected(404, f"Arquivo não encontrado: {candidate}.")
     if not os.access(resolved, os.R_OK):

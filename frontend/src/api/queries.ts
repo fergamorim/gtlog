@@ -24,6 +24,7 @@ export const queryKeys = {
   stats: (params: string) => ['stats', params] as const,
   watches: ['watches'] as const,
   watchSettings: ['watchSettings'] as const,
+  watchFolder: (path: string) => ['watchFolder', path] as const,
 }
 
 const isStatusFinished = (status: ImportStatus) => status === 'DONE' || status === 'FAILED'
@@ -129,6 +130,16 @@ export function useWatchSettings() {
     queryKey: queryKeys.watchSettings,
     queryFn: ({ signal }) => api.getWatchSettings(signal),
     staleTime: Infinity,
+  })
+}
+
+/** One folder of the watch root, for the file picker; always fresh, files keep changing. */
+export function useWatchFolder(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.watchFolder(path),
+    queryFn: ({ signal }) => api.listWatchFolder(path, signal),
+    enabled,
+    staleTime: 0,
   })
 }
 

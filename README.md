@@ -125,8 +125,12 @@ ser observados (caminhos com `..` ou links simbólicos que saiam dela são recus
 GTLOG_WATCH_DIR=/Users/voce/meu-app/logs docker compose up --build
 ```
 
-No formulário, informe o caminho relativo a essa pasta (`app.log`, `2026/10/api.log`). No macOS, a pasta precisa
-estar num local que o Docker Desktop compartilha (o padrão inclui `/Users`).
+No formulário, clique em **Selecionar arquivo** para navegar pelas pastas e escolher o arquivo, ou digite o caminho:
+o completo (`/Users/voce/meu-app/logs/app.log`, quando a pasta veio de `GTLOG_WATCH_DIR`) ou o relativo à pasta
+(`app.log`, `2026/10/api.log`). O seletor mostra só o conteúdo da pasta compartilhada: o seletor de arquivos nativo
+do navegador entrega o conteúdo do arquivo, mas nunca o caminho dele, e a API precisa do caminho para reler o
+arquivo a cada intervalo. No macOS, a pasta precisa estar num local que o Docker Desktop compartilha (o padrão
+inclui `/Users`).
 
 Para testar com um log que cresce sozinho, o gerador acrescenta linhas continuamente com `--follow`:
 
@@ -172,6 +176,7 @@ Variáveis de ambiente:
 | `CORS_ORIGINS` | `http://localhost:5173` | Origens permitidas, separadas por vírgula |
 | `WATCH_ROOT` | `/watch` | Pasta cujos arquivos podem ser observados em tempo real (fora do Docker, aponte para uma pasta local) |
 | `WATCH_SCHEDULER` | `true` | Liga o agendador que lê os arquivos observados (os testes desligam) |
+| `WATCH_HOST_ROOT` | vazio | A mesma pasta vista no host; permite digitar o caminho completo do host (o Compose preenche com `GTLOG_WATCH_DIR`) |
 | `GTLOG_WATCH_DIR` | `./samples` | Pasta do host montada em `/watch` pelo Compose |
 | `VITE_API_URL` | `http://localhost:8000` | URL da API usada pelo frontend (no build) |
 | `TEST_DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog_test` | Banco dos testes do backend |

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { errorMessage } from '../../api/client'
-import { useWatchMutations, useWatches } from '../../api/queries'
+import { useWatchMutations, useWatchSettings, useWatches } from '../../api/queries'
 import type { LogWatch } from '../../api/types'
 import { formatDateTime, formatInterval, formatNumber, formatRelative } from '../../lib/format'
 import { Icon } from '../ui/Icon'
@@ -9,6 +9,7 @@ import { ErrorState } from '../ui/StateViews'
 export function WatchList() {
   const { data, isError, error, refetch, isFetching } = useWatches()
   const { setActive, remove } = useWatchMutations()
+  const hostRoot = useWatchSettings().data?.host_root
 
   if (isError) return <ErrorState error={error} title="Não foi possível listar as observações" onRetry={() => refetch()} retrying={isFetching} />
   if (!data?.length) return null
@@ -25,7 +26,7 @@ export function WatchList() {
       <ul className="import-list watch-list" aria-label="Arquivos observados">
         {data.map((watch) => (
           <li key={watch.id} className="import-item">
-            <span className="import-item__name" title={watch.path}>{watch.path}</span>
+            <span className="import-item__name" title={hostRoot ? `${hostRoot}/${watch.path}` : watch.path}>{watch.path}</span>
             <WatchBadge watch={watch} />
             <span className="import-item__meta">
               <span>a cada {formatInterval(watch.interval_seconds)}</span>

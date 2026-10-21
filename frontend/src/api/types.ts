@@ -107,6 +107,23 @@ export interface LogWatchInput {
 
 export interface WatchSettings {
   root: string
+  /** The same folder on the host (GTLOG_WATCH_DIR), or null when unknown. */
+  host_root: string | null
   min_interval_seconds: number
   max_interval_seconds: number
+}
+
+export interface FolderEntry {
+  name: string
+  /** Relative to the watch root. */
+  path: string
+  is_dir: boolean
+  size: number | null
+  modified_at: string
+}
+
+export interface Folder {
+  path: string
+  parent: string | null
+  entries: FolderEntry[]
 }

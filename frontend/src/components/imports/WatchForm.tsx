@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { errorMessage } from '../../api/client'
 import { useWatchMutations, useWatchSettings } from '../../api/queries'
 import { Icon } from '../ui/Icon'
+import { WatchFilePicker } from './WatchFilePicker'
 
 type Unit = 'seconds' | 'minutes'
 const UNIT_SECONDS: Record<Unit, number> = { seconds: 1, minutes: 60 }
@@ -16,6 +17,7 @@ export function WatchForm() {
   const [unit, setUnit] = useState<Unit>('seconds')
   const [startAtEnd, setStartAtEnd] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
 
   const min = settings?.min_interval_seconds ?? 1
   const max = settings?.max_interval_seconds ?? DEFAULT_MAX_SECONDS
@@ -35,26 +37,52 @@ export function WatchForm() {
     )
   }
 
+  // With the host folder known (GTLOG_WATCH_DIR), the field shows the full path as the user sees it on disk.
+  const hostRoot = settings?.host_root ?? null
+  const display = (relative: string) => (hostRoot ? `${hostRoot}/${relative}` : relative)
+
   const error = localError ?? (create.isError ? errorMessage(create.error) : null)
 
   return (
     <form className="watch-form" onSubmit={submit} noValidate>
       <div className="field">
         <label className="field__label" htmlFor="watch-path">Arquivo</label>
-        <input
-          id="watch-path"
-          className="input"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="live.log"
-          autoComplete="off"
-          spellCheck={false}
-          aria-describedby="watch-path-hint"
-        />
+        <div className="watch-form__path">
+          <input
+            id="watch-path"
+            className="input"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            placeholder={display('live.log')}
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="watch-path-hint"
+          />
+          <button type="button" className="btn" onClick={() => setPicking(true)}>
+            <Icon name="folder" /> Selecionar arquivo
+          </button>
+        </div>
         <span className="card__hint" id="watch-path-hint">
-          Caminho dentro da pasta observável da API{settings ? <> (<code>{settings.root}</code>)</> : null}. No Docker é a
-          pasta <code>samples/</code> do projeto, ou a indicada em <code>GTLOG_WATCH_DIR</code>.
+          {hostRoot ? (
+            <>O arquivo precisa estar em <code>{hostRoot}</code>, a pasta compartilhada com a API.</>
+          ) : (
+            <>
+              Caminho dentro da pasta compartilhada com a API: a pasta <code>samples/</code> do projeto, ou a indicada
+              em <code>GTLOG_WATCH_DIR</code> ao subir o Docker.
+            </>
+          )}
         </span>
+        {picking && (
+          <WatchFilePicker
+            rootLabel={hostRoot ?? 'samples'}
+            onClose={() => setPicking(false)}
+            onPick={(picked) => {
+              setPath(display(picked))
+              setLocalError(null)
+              setPicking(false)
+            }}
+          />
+        )}
       </div>
       <div className="field">
         <span className="field__label" id="watch-interval-label">Ler a cada</span>

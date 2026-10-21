@@ -19,7 +19,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://gtlog:gtlog@db:5432/gtlog
-      UPLOAD_MAX_MB: "200"
+      UPLOAD_MAX_MB: "1024"
       CORS_ORIGINS: http://localhost:5173
     depends_on:
       db:

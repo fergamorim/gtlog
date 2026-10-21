@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog"
-    upload_max_mb: int = 200
+    upload_max_mb: int = 1024
     cors_origins: str = "http://localhost:5173"
 
     @property

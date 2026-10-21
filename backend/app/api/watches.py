@@ -2,6 +2,7 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
+from sqlalchemy import select
 
 from app.api.schemas import FolderOut, LogWatchIn, LogWatchOut, LogWatchUpdate, WatchSettingsOut
 from app.core.database import DbSession
@@ -11,8 +12,8 @@ from app.services import watcher
 router = APIRouter(prefix="/watches", tags=["watches"])
 
 
-def _out(db: DbSession, watch: LogWatch) -> LogWatchOut:
-    job = db.get(ImportJob, watch.import_id)
+def _out(db: DbSession, watch: LogWatch, job: ImportJob | None = None) -> LogWatchOut:
+    job = job or db.get(ImportJob, watch.import_id)
     return LogWatchOut(
         id=watch.id,
         path=watch.path,
@@ -72,7 +73,11 @@ def create_watch(body: LogWatchIn, db: DbSession) -> LogWatchOut:
 
 @router.get("", response_model=list[LogWatchOut])
 def list_watches(db: DbSession) -> list[LogWatchOut]:
-    return [_out(db, watch) for watch in watcher.list_watches(db)]
+    watches = watcher.list_watches(db)
+    # One query for every watch's import: this list is polled every few seconds by each open tab.
+    ids = [watch.import_id for watch in watches]
+    jobs = {job.id: job for job in db.scalars(select(ImportJob).where(ImportJob.id.in_(ids)))} if ids else {}
+    return [_out(db, watch, jobs.get(watch.import_id)) for watch in watches]
 
 
 @router.get("/{watch_id}", response_model=LogWatchOut)

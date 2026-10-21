@@ -12,8 +12,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    # Only this machine: the database has the default password, and the API reaches it through the compose network.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   api:
     build: ./backend
@@ -30,8 +31,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # The API has no authentication: keep it (and the web app) off the local network.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   web:
     build:
@@ -41,7 +43,7 @@ services:
     depends_on:
       - api
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
 
 volumes:
   pgdata:

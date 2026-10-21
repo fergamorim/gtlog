@@ -37,17 +37,34 @@ def pick_bucket(span: timedelta | None) -> Bucket:
     return next((bucket for bucket, limit in AUTO_BUCKETS if span <= limit), "day")
 
 
+def fit_bucket(bucket: Bucket, span: timedelta | None) -> Bucket:
+    """The requested bucket, or the finest coarser one keeping the period under MAX_FILLED_BUCKETS points."""
+    buckets = list(BUCKET_STEP)
+    for candidate in buckets[buckets.index(bucket) :]:
+        if span is None or span // BUCKET_STEP[candidate] < MAX_FILLED_BUCKETS:
+            return candidate
+    return "day"
+
+
+def _span(db: Session, filters: LogFilters, conditions: list) -> timedelta | None:
+    """Length of the period: the filter bounds, completed by the data when one is open."""
+    span_start, span_end = filters.start, filters.end
+    if span_start is None or span_end is None:
+        # Open-ended period: measure the data it holds (both ends come from the timestamp index).
+        first_ts, last_ts = db.execute(
+            select(func.min(LogEntry.timestamp), func.max(LogEntry.timestamp)).where(*conditions)
+        ).one()
+        span_start, span_end = span_start or first_ts, span_end or last_ts
+    return span_end - span_start if span_start and span_end else None
+
+
 def compute_stats(db: Session, filters: LogFilters, bucket: Bucket | None = None) -> dict:
     conditions = build_conditions(filters)
     if bucket is None:
-        span_start, span_end = filters.start, filters.end
-        if span_start is None or span_end is None:
-            # Open-ended period: measure the data it holds (both ends come from the timestamp index).
-            first_ts, last_ts = db.execute(
-                select(func.min(LogEntry.timestamp), func.max(LogEntry.timestamp)).where(*conditions)
-            ).one()
-            span_start, span_end = span_start or first_ts, span_end or last_ts
-        bucket = pick_bucket(span_end - span_start if span_start and span_end else None)
+        bucket = pick_bucket(_span(db, filters, conditions))
+    elif bucket != "day":
+        # A forced fine bucket over a long period would return one point per second: coarsen it instead.
+        bucket = fit_bucket(bucket, _span(db, filters, conditions))
 
     by_level = {level.value: 0 for level in LogLevel}
     series: dict[datetime, dict[str, int]] = {}

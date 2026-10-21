@@ -1,3 +1,4 @@
+import hashlib
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -207,6 +208,34 @@ def test_csv_header_applies_to_every_poll(client, root):
     assert job["invalid_lines"] == 0
 
 
+def test_format_waits_for_a_complete_first_line(client, root):
+    # A CSV header still being written must not be learned half cut.
+    path = root / "app.csv"
+    path.write_text("timestamp,level,serv")
+    watch_id = create(client, path="app.csv").json()["id"]
+    watch = poll(watch_id)
+    assert watch.format is None
+    assert watch.header is None
+    assert watch.offset == 0
+
+    with open(path, "a") as fh:
+        fh.write("ice,message\n2026-10-05T14:03:22Z,ERROR,payments,timeout\n")
+    watch = poll(watch_id)
+    assert watch.format == "csv"
+    assert watch.header == "timestamp,level,service,message"
+    with SessionLocal() as db:
+        entry = db.scalar(select(LogEntry).where(LogEntry.import_id == watch.import_id))
+    assert (entry.service, entry.message) == ("payments", "timeout")
+
+
+def test_head_fingerprint_matches_the_imported_bytes(client, root):
+    write(root / "app.log", LINES[:2], "w")
+    watch = poll(create(client).json()["id"])
+    content = (root / "app.log").read_bytes()
+    assert watch.head_size == len(content)
+    assert watch.head_digest == hashlib.sha256(content).hexdigest()
+
+
 def test_unrecognized_format_keeps_the_offset(client, root):
     write(root / "app.log", ["%%% garbage %%%"], "w")
     watch_id = create(client).json()["id"]
@@ -282,6 +311,24 @@ def test_create_rejects_missing_binary_and_duplicate(client, root):
     assert duplicate.json()["detail"] == "Este arquivo já está sendo observado."
 
 
+def test_database_refuses_a_second_active_watch_of_a_file(client, root):
+    # Two simultaneous requests both pass the SELECT check; the unique index stops the second commit.
+    write(root / "app.log", LINES[:1], "w")
+    first = create(client).json()
+    with SessionLocal() as db:
+        db.add(LogWatch(path="app.log", interval_seconds=5, active=True, import_id=first["import_id"]))
+        with pytest.raises(watcher.WatchRejected) as rejected:
+            watcher._commit_unique(db)
+    assert rejected.value.status_code == 409
+    assert len(client.get("/watches").json()) == 1
+
+    # A paused watch does not count: the same file can be watched again, but not resumed twice.
+    assert client.patch(f"/watches/{first['id']}", json={"active": False}).status_code == 200
+    second = create(client)
+    assert second.status_code == 201
+    assert client.patch(f"/watches/{first['id']}", json={"active": True}).status_code == 409
+
+
 @pytest.mark.parametrize("interval", [0, 86_401])
 def test_interval_bounds(client, root, interval):
     write(root / "app.log", LINES[:1], "w")
@@ -340,6 +387,16 @@ def test_files_lists_folders_first_and_hides_dotfiles(client, root):
     assert inner["parent"] == ""
     assert [e["path"] for e in inner["entries"]] == ["logs/api.log"]
     assert create(client, path=inner["entries"][0]["path"]).status_code == 201
+
+
+def test_files_stops_at_the_limit_after_sorting(client, root, monkeypatch):
+    monkeypatch.setattr(watcher, "LIST_FOLDER_LIMIT", 2)
+    for name in ("c.log", "a.log", "b.log"):
+        write(root / name, LINES[:1], "w")
+    (root / "zz").mkdir()
+    body = client.get("/watches/files").json()
+    assert [e["name"] for e in body["entries"]] == ["zz", "a.log"]
+    assert body["entries"][1]["size"] == os.path.getsize(root / "a.log")
 
 
 @pytest.mark.parametrize(("path", "status"), [("..", 422), ("/etc", 422), ("nope", 404), ("b.log", 404)])

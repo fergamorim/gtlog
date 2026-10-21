@@ -156,5 +156,7 @@ Resposta:
   (`start=2026-10-05T00:00:00Z&end=2026-10-06T00:00:00Z&bucket=hour` devolve as 24 horas do dia); sem eles, vai do
   primeiro ao último bucket com dados. O dashboard usa isso no painel "Volume por hora em um dia".
   O intervalo do modo automático é `start`/`end` do filtro ou, na falta deles, o primeiro/último registro.
+  Um `bucket` pedido que daria 10.000 pontos ou mais nesse intervalo é trocado pelo próximo maior que caiba
+  (`bucket=second` sobre meses de dados devolve dias); o campo `bucket` da resposta diz qual foi usado.
 - `by_service` e `by_category`: top 10 por total (empate por nome; valores nulos ficam de fora). `top_errors`: top 10 mensagens de nível ERROR/CRITICAL,
   agrupadas após trocar números por `#` (ex.: `timeout calling auth after #ms`), para juntar variações.

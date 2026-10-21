@@ -120,3 +120,5 @@ Index("ix_log_status_ts", LogEntry.status_code, LogEntry.timestamp.desc())
 Index("ix_log_import_ts_id", LogEntry.import_id, LogEntry.timestamp.desc(), LogEntry.id.desc())
 # The scheduler looks for active watches that are due.
 Index("ix_watch_due", LogWatch.active, LogWatch.next_check_at)
+# One active watch per file, enforced by the database so two simultaneous requests cannot both create one.
+Index("ux_watch_active_path", LogWatch.path, unique=True, postgresql_where=LogWatch.active.is_(True))

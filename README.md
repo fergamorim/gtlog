@@ -53,7 +53,8 @@ começa vazio: importe um arquivo pela tela **Importar** (veja abaixo). Os dados
 `docker compose down -v` apaga tudo.
 
 As portas 5432, 8000 e 5173 precisam estar livres. Se já houver um Postgres local na 5432, pare-o ou troque a porta
-publicada em `docker-compose.yml`.
+publicada em `docker-compose.yml`. As três portas só aceitam conexões da própria máquina (`127.0.0.1`): o banco usa a
+senha padrão e a API não tem autenticação, então não ficam expostos na rede local.
 
 ### Problema comum: `unknown flag: --build`
 

@@ -68,7 +68,7 @@ function LogDetails({ log, onFilter }: { log: LogEntry; onFilter: LogDetailDrawe
   return (
     <>
       <dl className="meta-list">
-        <dt>Data/hora</dt>
+        <dt>Data/hora (UTC)</dt>
         <dd>
           <time dateTime={log.timestamp}>{formatTimestamp(log.timestamp)}</time>
           <div className="card__hint mono">{log.timestamp}</div>

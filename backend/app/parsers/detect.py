@@ -14,6 +14,11 @@ def all_parsers() -> tuple[LineParser, ...]:
     return (json_lines, syslog.SyslogParser(), http_access, csv_lines.CsvParser(), text)
 
 
+def parser_by_name(name: str) -> LineParser | None:
+    """A fresh instance of the parser called name (as stored in import_jobs.format), or None."""
+    return next((parser for parser in all_parsers() if parser.name == name), None)
+
+
 def detect_parser(sample_lines: Iterable[str]) -> LineParser | None:
     """Return the parser with the most successful parses over the non-blank sample lines.
 

@@ -1,0 +1,254 @@
+import os
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import select
+
+from app.core.config import get_settings
+from app.core.database import SessionLocal
+from app.models import LogEntry, LogWatch
+from app.services import watcher
+
+LINES = [
+    "2026-10-05T17:46:57+00:00 DEBUG [catalog] cache lookup key=7248ad",
+    "2026-10-05T18:07:06+00:00 INFO [search] request GET /api/payments completed in 7169ms",
+    "2026-10-05T18:27:16+00:00 ERROR [payments] database connection timeout after 30s",
+    "2026-10-05T18:47:26+00:00 WARNING [player] memory usage at 91%",
+]
+
+
+@pytest.fixture
+def root(tmp_path, monkeypatch):
+    folder = tmp_path / "watch"
+    folder.mkdir()
+    monkeypatch.setattr(get_settings(), "watch_root", str(folder))
+    return folder
+
+
+def write(path, lines, mode="a"):
+    with open(path, mode, encoding="utf-8") as fh:
+        fh.write("".join(line + "\n" for line in lines))
+
+
+def create(client, path="app.log", interval=5, **extra):
+    return client.post("/watches", json={"path": path, "interval_seconds": interval, **extra})
+
+
+def poll(watch_id):
+    watcher.poll_watch(watch_id)
+    with SessionLocal() as db:
+        return db.get(LogWatch, watch_id)
+
+
+def raws(import_id):
+    with SessionLocal() as db:
+        stmt = select(LogEntry.raw).where(LogEntry.import_id == import_id).order_by(LogEntry.id)
+        return list(db.scalars(stmt))
+
+
+def test_first_poll_imports_the_file_and_later_polls_only_new_lines(client, root):
+    write(root / "app.log", LINES[:2], "w")
+    created = create(client)
+    assert created.status_code == 201
+    body = created.json()
+    assert body["path"] == "app.log"
+    assert body["active"] is True
+
+    watch = poll(body["id"])
+    assert raws(body["import_id"]) == LINES[:2]
+    assert watch.format == "text"
+    assert watch.offset == os.path.getsize(root / "app.log")
+    assert watch.last_checked_at is not None
+    assert watch.next_check_at > watch.last_checked_at
+
+    poll(body["id"])  # nothing new
+    write(root / "app.log", LINES[2:])
+    poll(body["id"])
+    assert raws(body["import_id"]) == LINES
+
+    job = client.get(f"/imports/{body['import_id']}").json()
+    assert job["status"] == "DONE"
+    assert job["parsed_lines"] == 4
+    assert job["format"] == "text"
+    listed = client.get("/watches").json()
+    assert listed[0]["parsed_lines"] == 4
+    assert client.get(f"/logs?import_id={body['import_id']}").json()["items"]
+
+
+def test_partial_last_line_waits_for_its_line_break(client, root):
+    path = root / "app.log"
+    write(path, LINES[:1], "w")
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(LINES[1][:20])
+    watch_id = create(client).json()["id"]
+
+    watch = poll(watch_id)
+    assert raws(watch.import_id) == LINES[:1]
+
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(LINES[1][20:] + "\n")
+    poll(watch_id)
+    assert raws(watch.import_id) == LINES[:2]
+
+
+def test_truncated_file_is_read_from_the_start(client, root):
+    path = root / "app.log"
+    write(path, LINES, "w")
+    watch_id = create(client).json()["id"]
+    watch = poll(watch_id)
+
+    write(path, LINES[3:], "w")  # smaller than the offset
+    poll(watch_id)
+    assert raws(watch.import_id) == LINES + LINES[3:]
+
+
+def test_rotated_file_is_read_from_the_start(client, root):
+    path = root / "app.log"
+    write(path, LINES[:2], "w")
+    watch_id = create(client).json()["id"]
+    watch = poll(watch_id)
+
+    os.rename(path, root / "app.log.1")
+    write(path, LINES[1:], "w")  # new inode, bigger than the old offset
+    poll(watch_id)
+    assert raws(watch.import_id) == LINES[:2] + LINES[1:]
+
+
+def test_missing_file_is_reported_and_picked_up_again(client, root):
+    path = root / "app.log"
+    write(path, LINES[:1], "w")
+    watch_id = create(client).json()["id"]
+    poll(watch_id)
+
+    os.remove(path)
+    watch = poll(watch_id)
+    assert watch.last_error == "Arquivo não encontrado: app.log."
+    assert watch.active is True
+
+    write(path, LINES[1:2], "w")
+    watch = poll(watch_id)
+    assert watch.last_error is None
+    assert raws(watch.import_id) == LINES[:2]
+
+
+def test_start_at_end_skips_existing_content(client, root):
+    write(root / "app.log", LINES[:2], "w")
+    watch_id = create(client, start_at_end=True).json()["id"]
+    watch = poll(watch_id)
+    assert raws(watch.import_id) == []
+
+    write(root / "app.log", LINES[2:])
+    poll(watch_id)
+    assert raws(watch.import_id) == LINES[2:]
+
+
+def test_csv_header_applies_to_every_poll(client, root):
+    path = root / "app.csv"
+    path.write_text("timestamp,level,service,message\n2026-10-05T14:03:22Z,ERROR,payments,timeout\n")
+    watch_id = create(client, path="app.csv").json()["id"]
+    watch = poll(watch_id)
+    assert watch.format == "csv"
+
+    with open(path, "a") as fh:
+        fh.write("2026-10-05T14:04:00Z,INFO,auth,login ok\n")
+    poll(watch_id)
+    job = client.get(f"/imports/{watch.import_id}").json()
+    assert job["parsed_lines"] == 2
+    assert job["invalid_lines"] == 0
+
+
+def test_unrecognized_format_keeps_the_offset(client, root):
+    write(root / "app.log", ["%%% garbage %%%"], "w")
+    watch_id = create(client).json()["id"]
+    watch = poll(watch_id)
+    assert watch.last_error == "Formato de log não reconhecido."
+    assert watch.offset == 0
+
+
+def test_backlog_bigger_than_one_poll_is_due_again_right_away(client, root, monkeypatch):
+    monkeypatch.setattr(watcher, "MAX_POLL_BYTES", len(LINES[0]) + 1)
+    write(root / "app.log", LINES, "w")
+    watch_id = create(client, interval=600).json()["id"]
+    watch = poll(watch_id)
+    assert raws(watch.import_id) == LINES[:1]
+    assert watch.next_check_at <= datetime.now(UTC)
+
+
+def test_paused_watch_is_not_polled_or_due(client, root):
+    write(root / "app.log", LINES[:1], "w")
+    watch_id = create(client).json()["id"]
+    response = client.patch(f"/watches/{watch_id}", json={"active": False, "interval_seconds": 60})
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    assert response.json()["interval_seconds"] == 60
+
+    watch = poll(watch_id)
+    assert raws(watch.import_id) == []
+    with SessionLocal() as db:
+        assert watcher.due_watch_ids(db, datetime.now(UTC) + timedelta(days=2)) == []
+
+
+def test_due_watch_ids_follow_next_check_at(client, root):
+    write(root / "app.log", LINES[:1], "w")
+    watch_id = create(client, interval=30).json()["id"]
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        assert watcher.due_watch_ids(db, now) == [watch_id]
+    poll(watch_id)
+    with SessionLocal() as db:
+        assert watcher.due_watch_ids(db, now + timedelta(seconds=5)) == []
+        assert watcher.due_watch_ids(db, now + timedelta(seconds=31)) == [watch_id]
+
+
+@pytest.mark.parametrize("path", ["../secret.log", "/etc/passwd", "sub/../../secret.log"])
+def test_paths_outside_the_root_are_rejected(client, root, path):
+    (root.parent / "secret.log").write_text(LINES[0] + "\n")
+    response = create(client, path=path)
+    assert response.status_code == 422
+    assert "pasta observável" in response.json()["detail"]
+
+
+def test_symlink_leaving_the_root_is_rejected(client, root):
+    (root.parent / "secret.log").write_text(LINES[0] + "\n")
+    os.symlink(root.parent / "secret.log", root / "link.log")
+    assert create(client, path="link.log").status_code == 422
+
+
+def test_absolute_path_inside_the_root_is_accepted(client, root):
+    write(root / "app.log", LINES[:1], "w")
+    response = create(client, path=str(root / "app.log"))
+    assert response.status_code == 201
+    assert response.json()["path"] == "app.log"
+
+
+def test_create_rejects_missing_binary_and_duplicate(client, root):
+    assert create(client, path="nope.log").status_code == 404
+    (root / "bin.log").write_bytes(b"\x00\x01\x02")
+    assert create(client, path="bin.log").status_code == 415
+    write(root / "app.log", LINES[:1], "w")
+    assert create(client).status_code == 201
+    duplicate = create(client)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "Este arquivo já está sendo observado."
+
+
+@pytest.mark.parametrize("interval", [0, 86_401])
+def test_interval_bounds(client, root, interval):
+    write(root / "app.log", LINES[:1], "w")
+    response = create(client, interval=interval)
+    assert response.status_code == 422
+    assert "interval_seconds" in response.json()["detail"]
+
+
+def test_delete_stops_watching_and_keeps_logs(client, root):
+    write(root / "app.log", LINES[:2], "w")
+    body = create(client).json()
+    poll(body["id"])
+    assert client.delete(f"/watches/{body['id']}").status_code == 204
+    assert client.get(f"/watches/{body['id']}").status_code == 404
+    assert raws(body["import_id"]) == LINES[:2]
+
+
+def test_settings_expose_the_root_and_bounds(client, root):
+    body = client.get("/watches/settings").json()
+    assert body == {"root": os.path.realpath(root), "min_interval_seconds": 1, "max_interval_seconds": 86_400}

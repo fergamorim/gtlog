@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBucket, formatDateTime, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
+import { formatBucket, formatDateTime, formatInterval, formatTimestamp, isoToLocalInput, localInputToIso, spansYears } from './format'
 
 // These hold in any machine time zone: the UI always shows UTC (run with TZ=America/Sao_Paulo to check).
 describe('dates are shown in UTC', () => {
@@ -27,5 +27,19 @@ describe('spansYears', () => {
     expect(spansYears(['2016-02-29T00:00:00Z', '2017-02-15T00:00:00Z'])).toBe(true)
     expect(spansYears(['2018-01-02T00:00:00Z', '2018-12-15T00:00:00Z'])).toBe(false)
     expect(spansYears(['2018-01-02T00:00:00Z'])).toBe(false)
+  })
+})
+
+describe('formatInterval', () => {
+  it.each([
+    [1, '1 s'],
+    [45, '45 s'],
+    [60, '1 min'],
+    [90, '1 min e 30 s'],
+    [600, '10 min'],
+    [3600, '1 h'],
+    [86_400, '24 h'],
+  ])('formats %i seconds as %s', (seconds, text) => {
+    expect(formatInterval(seconds)).toBe(text)
   })
 })

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Computed,
     DateTime,
     Enum,
@@ -76,6 +77,33 @@ class LogEntry(Base):
     )
 
 
+class LogWatch(Base):
+    """A file on the API host read every interval_seconds, importing only the lines added since."""
+
+    __tablename__ = "log_watches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Path relative to the watch root (settings.watch_root), as the user typed it.
+    path: Mapped[str] = mapped_column(String(1024))
+    interval_seconds: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Every line read by this watch goes into one import, so the usual import filter applies.
+    import_id: Mapped[int] = mapped_column(ForeignKey("import_jobs.id", ondelete="CASCADE"))
+    # Bytes already consumed, and the file identity they belong to (a new inode means rotation).
+    offset: Mapped[int] = mapped_column(BigInteger, default=0)
+    inode: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # SHA-256 of the first head_size bytes read: catches a recreated file that got the old inode back.
+    head_size: Mapped[int] = mapped_column(Integer, default=0)
+    head_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Detected parser and, for CSV, the header line every later chunk is parsed against.
+    format: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    header: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # Keyset pagination walks (timestamp DESC, id DESC); filters narrow by level first.
 Index("ix_log_ts_id", LogEntry.timestamp.desc(), LogEntry.id.desc())
 Index("ix_log_level_ts", LogEntry.level, LogEntry.timestamp.desc())
@@ -86,3 +114,5 @@ Index("ix_log_category", LogEntry.category)
 Index("ix_log_status_ts", LogEntry.status_code, LogEntry.timestamp.desc())
 # Filtering by import keeps the table order, and ON DELETE CASCADE needs it to avoid a full scan.
 Index("ix_log_import_ts_id", LogEntry.import_id, LogEntry.timestamp.desc(), LogEntry.id.desc())
+# The scheduler looks for active watches that are due.
+Index("ix_watch_due", LogWatch.active, LogWatch.next_check_at)

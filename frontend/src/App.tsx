@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { useImportCompletionWatcher } from './api/queries'
+import { useImportCompletionWatcher, useWatchActivity } from './api/queries'
 import { AppHeader } from './components/layout/AppHeader'
 import { EmptyState } from './components/ui/StateViews'
 
@@ -20,6 +20,7 @@ function PageFallback() {
 export default function App() {
   const { pathname } = useLocation()
   useImportCompletionWatcher()
+  useWatchActivity()
   // The logs page fills the viewport so the virtualized table owns the scroll.
   const fill = pathname === '/logs'
 

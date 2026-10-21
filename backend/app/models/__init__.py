@@ -1,3 +1,3 @@
-from app.models.log import ImportJob, ImportStatus, LogEntry, LogLevel
+from app.models.log import ImportJob, ImportStatus, LogEntry, LogLevel, LogWatch
 
-__all__ = ["ImportJob", "ImportStatus", "LogEntry", "LogLevel"]
+__all__ = ["ImportJob", "ImportStatus", "LogEntry", "LogLevel", "LogWatch"]

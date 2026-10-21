@@ -22,6 +22,41 @@ Job:
 `format` é o formato detectado: `text`, `json`, `http`, `syslog` ou `csv`. Em CSV a linha de cabeçalho não entra em
 `total_lines` nem em `invalid_lines`.
 
+## Observação de arquivos em tempo real
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| GET | `/watches/settings` | Pasta observável (`root`) e limites do intervalo em segundos. |
+| POST | `/watches` | Começa a observar. Corpo JSON abaixo. Responde 201 com a observação. |
+| GET | `/watches` | Todas as observações, mais recente primeiro. |
+| GET | `/watches/{id}` | Uma observação. 404 se não existir. |
+| PATCH | `/watches/{id}` | Pausa/retoma (`active`) e/ou muda `interval_seconds`. |
+| DELETE | `/watches/{id}` | Encerra a observação (204). Os logs importados continuam na importação dela. |
+
+```json
+{"path": "live.log", "interval_seconds": 10, "start_at_end": false}
+```
+
+`path` é relativo à pasta observável (um caminho absoluto dentro dela também vale). `interval_seconds` vai de 1 a
+86400. `start_at_end: true` ignora o conteúdo atual e importa só o que for acrescentado depois.
+
+Erros: `422` caminho fora da pasta observável (inclusive via `..` ou link simbólico) ou intervalo inválido, `404`
+arquivo inexistente, `415` arquivo binário, `409` arquivo já observado por outra observação ativa (também ao
+retomar).
+
+Resposta:
+
+```json
+{"id": 1, "path": "live.log", "interval_seconds": 10, "active": true, "import_id": 4, "format": "text",
+ "offset": 58210, "parsed_lines": 731, "invalid_lines": 3, "last_error": null, "created_at": "...",
+ "last_checked_at": "...", "next_check_at": "..."}
+```
+
+Cada observação grava suas linhas em uma importação própria (`import_id`), então `import_id=4` em `/logs` e
+`/stats` mostra só o que veio dela. `offset` é quantos bytes do arquivo já foram lidos. `last_error` explica a última
+leitura que não deu certo (`Arquivo não encontrado: live.log.`, `Formato de log não reconhecido.`), e a observação
+continua tentando a cada intervalo.
+
 ## Consulta de logs
 
 `GET /logs`

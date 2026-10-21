@@ -24,7 +24,7 @@ INVALID_LINES = ["this line is not a log entry at all", "%%% garbage %%%"]
 def client():
     with TestClient(app) as c:
         with engine.begin() as conn:
-            conn.execute(text("TRUNCATE log_entries, import_jobs RESTART IDENTITY CASCADE"))
+            conn.execute(text("TRUNCATE log_watches, log_entries, import_jobs RESTART IDENTITY CASCADE"))
         yield c
 
 

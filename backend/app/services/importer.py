@@ -3,7 +3,7 @@
 import logging
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from typing import BinaryIO
 
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models import ImportJob, ImportStatus, LogEntry
-from app.parsers import detect_parser
+from app.parsers import ParsedLine, detect_parser
 
 logger = logging.getLogger(__name__)
 
@@ -118,19 +118,7 @@ def _run(db: Session, job_id: int, path: str) -> None:
             invalid += 1
         else:
             parsed += 1
-            # Parsers already bound service/category to their column sizes (normalize.build).
-            batch.append(
-                (
-                    job_id,
-                    entry.timestamp,
-                    entry.level.name,
-                    entry.message[:MAX_TEXT_CHARS],
-                    entry.service,
-                    entry.category,
-                    entry.status_code,
-                    line[:MAX_TEXT_CHARS],
-                )
-            )
+            batch.append(to_row(job_id, entry, line))
         if total % BATCH_SIZE == 0:
             _flush(db, job_id, batch, total, parsed, invalid)
             batch = []
@@ -141,25 +129,51 @@ def _run(db: Session, job_id: int, path: str) -> None:
 def _read_lines(path: str) -> Iterator[str]:
     """Yield non-blank lines without the line break. Undecodable bytes become U+FFFD."""
     with open(path, encoding="utf-8-sig", errors="replace") as fh:
-        for line in fh:
-            # Postgres text columns reject NUL; the sniff only covers the first KB.
-            line = line.rstrip("\r\n").replace("\x00", "")
-            if line.strip():
-                yield line
+        yield from clean_lines(fh)
+
+
+def clean_lines(lines: Iterable[str]) -> Iterator[str]:
+    """Drop line breaks and blank lines."""
+    for line in lines:
+        # Postgres text columns reject NUL; the sniff only covers the first KB.
+        line = line.rstrip("\r\n").replace("\x00", "")
+        if line.strip():
+            yield line
 
 
 _COPY_COLUMNS = ("import_id", "timestamp", "level", "message", "service", "category", "status_code", "raw")
 _COPY_SQL = f"COPY {LogEntry.__tablename__} ({', '.join(_COPY_COLUMNS)}) FROM STDIN"
 
 
+def to_row(job_id: int, entry: ParsedLine, line: str) -> tuple:
+    """One log_entries row in _COPY_COLUMNS order."""
+    # Parsers already bound service/category to their column sizes (normalize.build).
+    return (
+        job_id,
+        entry.timestamp,
+        entry.level.name,
+        entry.message[:MAX_TEXT_CHARS],
+        entry.service,
+        entry.category,
+        entry.status_code,
+        line[:MAX_TEXT_CHARS],
+    )
+
+
+def copy_rows(db: Session, rows: list[tuple]) -> None:
+    """Insert rows built by to_row. Runs in the session's transaction, so the caller commits."""
+    if not rows:
+        return
+    # COPY is ~10x faster than multi-row INSERT here.
+    conn = db.connection().connection.driver_connection
+    with conn.cursor() as cursor, cursor.copy(_COPY_SQL) as copy:
+        for row in rows:
+            copy.write_row(row)
+
+
 def _flush(db: Session, job_id: int, rows: list[tuple], total: int, parsed: int, invalid: int) -> None:
-    """Write one batch and the job counters in a single commit. Rows follow _COPY_COLUMNS order."""
-    if rows:
-        # COPY is ~10x faster than multi-row INSERT here; it runs in the session's transaction.
-        conn = db.connection().connection.driver_connection
-        with conn.cursor() as cursor, cursor.copy(_COPY_SQL) as copy:
-            for row in rows:
-                copy.write_row(row)
+    """Write one batch and the job counters in a single commit."""
+    copy_rows(db, rows)
     db.execute(
         update(ImportJob)
         .where(ImportJob.id == job_id)

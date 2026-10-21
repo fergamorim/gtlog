@@ -9,7 +9,7 @@ import {
 import { useEffect, useMemo, useRef } from 'react'
 import { toParams, type FilterKey, type LogFilters } from '../lib/filters'
 import { api } from './client'
-import type { ImportJob, ImportStatus, LogEntry, LogPage } from './types'
+import type { ImportJob, ImportStatus, LogEntry, LogPage, LogWatch, LogWatchInput } from './types'
 
 export const LOGS_PAGE_SIZE = 200
 
@@ -22,6 +22,8 @@ export const queryKeys = {
   log: (id: number) => ['log', id] as const,
   facets: ['facets'] as const,
   stats: (params: string) => ['stats', params] as const,
+  watches: ['watches'] as const,
+  watchSettings: ['watchSettings'] as const,
 }
 
 const isStatusFinished = (status: ImportStatus) => status === 'DONE' || status === 'FAILED'
@@ -107,6 +109,83 @@ export function useUploadImport() {
       client.setQueryData<ImportJob[]>(queryKeys.imports, (list) => [job, ...(list ?? []).filter((j) => j.id !== job.id)])
     },
   })
+}
+
+/* -------------------------------- Watches -------------------------------- */
+
+export const WATCH_REFRESH_MS = 3000
+
+export function useWatches() {
+  return useQuery({
+    queryKey: queryKeys.watches,
+    queryFn: ({ signal }) => api.listWatches(signal),
+    // New lines can arrive at any time while a watch is active.
+    refetchInterval: (query) => (query.state.data?.some((watch) => watch.active) ? WATCH_REFRESH_MS : false),
+  })
+}
+
+export function useWatchSettings() {
+  return useQuery({
+    queryKey: queryKeys.watchSettings,
+    queryFn: ({ signal }) => api.getWatchSettings(signal),
+    staleTime: Infinity,
+  })
+}
+
+/** Create, pause/resume and delete watches; each one updates the cached list right away. */
+export function useWatchMutations() {
+  const client = useQueryClient()
+  const setList = (update: (list: LogWatch[]) => LogWatch[]) =>
+    client.setQueryData<LogWatch[]>(queryKeys.watches, (list) => update(list ?? []))
+  return {
+    create: useMutation({
+      mutationFn: (input: LogWatchInput) => api.createWatch(input),
+      onSuccess: (watch) => {
+        setList((list) => [watch, ...list])
+        client.invalidateQueries({ queryKey: queryKeys.imports, exact: true })
+      },
+    }),
+    setActive: useMutation({
+      mutationFn: ({ id, active }: { id: number; active: boolean }) => api.updateWatch(id, { active }),
+      onSuccess: (watch) => setList((list) => list.map((w) => (w.id === watch.id ? watch : w))),
+    }),
+    remove: useMutation({
+      mutationFn: (id: number) => api.deleteWatch(id),
+      onSuccess: (_, id) => setList((list) => list.filter((w) => w.id !== id)),
+    }),
+  }
+}
+
+/**
+ * New lines from a watch: refresh counts, stats, facets and imports. A logs list is refetched only
+ * while it has a single page loaded, so a user scrolled deep into the table is not thrown back to the top.
+ */
+function refreshAfterWatch(client: QueryClient) {
+  for (const query of client.getQueryCache().findAll({ queryKey: ['logs'] })) {
+    const pages = (query.state.data as { pages?: unknown[] } | undefined)?.pages
+    if (!pages || pages.length <= 1) client.invalidateQueries({ queryKey: query.queryKey, exact: true })
+  }
+  client.invalidateQueries({ queryKey: ['logCount'] })
+  client.invalidateQueries({ queryKey: ['stats'] })
+  client.invalidateQueries({ queryKey: queryKeys.facets })
+  client.invalidateQueries({ queryKey: queryKeys.imports })
+}
+
+/** Mounted once in App: refreshes the data views whenever an active watch imports new lines. */
+export function useWatchActivity() {
+  const client = useQueryClient()
+  const { data } = useWatches()
+  const previous = useRef(new Map<number, number>())
+
+  useEffect(() => {
+    if (!data) return
+    const grew = data.some((watch) => {
+      const before = previous.current.get(watch.id)
+      return before !== undefined && watch.parsed_lines + watch.invalid_lines > before
+    })
+    previous.current = new Map(data.map((watch) => [watch.id, watch.parsed_lines + watch.invalid_lines]))
+    if (grew) refreshAfterWatch(client)
+  }, [data, client])
 }
 
 /* --------------------------------- Logs --------------------------------- */

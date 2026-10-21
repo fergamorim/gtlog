@@ -4,6 +4,10 @@ Usage:
     python scripts/generate_logs.py --lines 200000 --format text --out samples/app.log
     python scripts/generate_logs.py --lines 50000 --format json --out samples/app.jsonl
     python scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
+    python scripts/generate_logs.py --lines 0 --follow 5 --out samples/live.log
+
+--follow N keeps appending N lines per second (timestamped now) until Ctrl+C,
+to try the live watch of a file.
 
 A small share of lines is deliberately malformed so the importer's
 validation and error reporting can be exercised.
@@ -13,6 +17,7 @@ import argparse
 import csv
 import json
 import random
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -40,6 +45,21 @@ def render(level: str, svc: str) -> str:
     )
 
 
+def write_line(f, writer, fmt: str, ts: datetime, invalid_ratio: float) -> None:
+    if random.random() < invalid_ratio:
+        f.write("@@ corrupted line without structure @@\n")
+        return
+    level = random.choices(LEVELS, LEVEL_WEIGHTS)[0]
+    svc = random.choice(SERVICES)
+    msg = render(level, svc)
+    if fmt == "csv":
+        writer.writerow([ts.isoformat(), level, svc, msg])
+    elif fmt == "json":
+        f.write(json.dumps({"timestamp": ts.isoformat(), "level": level, "service": svc, "message": msg}) + "\n")
+    else:
+        f.write(f"{ts.isoformat()} {level} [{svc}] {msg}\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lines", type=int, default=100_000)
@@ -48,6 +68,7 @@ def main() -> None:
     parser.add_argument("--invalid-ratio", type=float, default=0.005)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--follow", type=int, default=0, metavar="N", help="then append N lines per second")
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -60,21 +81,20 @@ def main() -> None:
         if args.format == "csv":
             writer.writerow(["timestamp", "level", "service", "message"])
         for i in range(args.lines):
-            if random.random() < args.invalid_ratio:
-                f.write("@@ corrupted line without structure @@\n")
-                continue
-            ts = start + step * i
-            level = random.choices(LEVELS, LEVEL_WEIGHTS)[0]
-            svc = random.choice(SERVICES)
-            msg = render(level, svc)
-            if args.format == "csv":
-                writer.writerow([ts.isoformat(), level, svc, msg])
-            elif args.format == "json":
-                f.write(json.dumps({"timestamp": ts.isoformat(), "level": level, "service": svc, "message": msg}) + "\n")
-            else:
-                f.write(f"{ts.isoformat()} {level} [{svc}] {msg}\n")
+            write_line(f, writer, args.format, start + step * i, args.invalid_ratio)
 
-    print(f"wrote {args.lines} lines to {args.out}")
+        print(f"wrote {args.lines} lines to {args.out}")
+        if args.follow <= 0:
+            return
+        print(f"appending {args.follow} lines/s, Ctrl+C to stop")
+        try:
+            while True:
+                for _ in range(args.follow):
+                    write_line(f, writer, args.format, datetime.now(timezone.utc), args.invalid_ratio)
+                f.flush()
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
 
 if __name__ == "__main__":

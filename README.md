@@ -82,7 +82,9 @@ python3 scripts/generate_logs.py --lines 50000 --format json --out samples/app.j
 python3 scripts/generate_logs.py --lines 50000 --format csv --out samples/app.csv
 ```
 
-Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005) e `--seed` (padrão 42).
+Opções: `--days` (período coberto, padrão 14), `--invalid-ratio` (padrão 0.005), `--seed` (padrão 42) e
+`--follow N` (depois de gerar, continua acrescentando N linhas por segundo; veja
+[observação em tempo real](#observar-um-arquivo-de-log-em-tempo-real)).
 `samples/` está no `.gitignore`.
 
 Pela interface: abra http://localhost:5173/importar e arraste o arquivo. Pela API:
@@ -96,6 +98,43 @@ curl "http://localhost:8000/stats"
 
 Exemplo de job concluído para 200 mil linhas geradas:
 `"status": "DONE", "format": "text", "total_lines": 200000, "parsed_lines": 198964, "invalid_lines": 1036`.
+
+## Observar um arquivo de log em tempo real
+
+Na tela **Importar**, o cartão **Observar arquivo em tempo real** acompanha um log que continua crescendo. Você
+indica o caminho do arquivo e de quanto em quanto tempo ele deve ser lido (em segundos ou minutos, de 1 segundo a
+24 horas). A cada intervalo a API lê só o que foi acrescentado desde a última leitura, como um `tail -f`, e importa
+essas linhas em uma importação própria da observação (filtrável em Logs e no Dashboard). As telas de logs, contagem
+e dashboard se atualizam sozinhas quando chegam linhas novas.
+
+- Na primeira leitura o conteúdo que o arquivo já tem é importado. Marque **Ignorar o conteúdo atual** para
+  importar só o que for escrito dali em diante.
+- Uma última linha ainda sem quebra de linha espera a próxima leitura, para não importar linha pela metade.
+- Se o arquivo for rotacionado (recriado no mesmo caminho) ou truncado, a leitura recomeça do início do novo
+  arquivo, e o formato é detectado de novo.
+- Se o arquivo sumir, a observação mostra o erro e continua tentando; quando ele volta, a leitura segue.
+- **Pausar** interrompe as leituras e **Retomar** lê de uma vez o que foi escrito no meio tempo. **Remover** encerra
+  a observação; os logs já importados continuam lá.
+
+**Onde o arquivo precisa estar.** A API roda dentro de um container e não enxerga o disco do seu computador. Por
+isso o Compose monta uma pasta do host, só para leitura, em `/watch` no container, e só arquivos dentro dela podem
+ser observados (caminhos com `..` ou links simbólicos que saiam dela são recusados). Por padrão a pasta é
+`samples/` do projeto; para outra pasta, defina `GTLOG_WATCH_DIR` antes de subir:
+
+```bash
+GTLOG_WATCH_DIR=/Users/voce/meu-app/logs docker compose up --build
+```
+
+No formulário, informe o caminho relativo a essa pasta (`app.log`, `2026/10/api.log`). No macOS, a pasta precisa
+estar num local que o Docker Desktop compartilha (o padrão inclui `/Users`).
+
+Para testar com um log que cresce sozinho, o gerador acrescenta linhas continuamente com `--follow`:
+
+```bash
+python3 scripts/generate_logs.py --lines 1000 --follow 5 --out samples/live.log   # 5 linhas/s até Ctrl+C
+```
+
+Depois observe `live.log` com intervalo de 5 segundos e abra **Logs**.
 
 ## Desenvolvimento local (sem Docker para API e web)
 
@@ -131,6 +170,9 @@ Variáveis de ambiente:
 | `DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog` | Conexão da API |
 | `UPLOAD_MAX_MB` | `1024` | Tamanho máximo do upload, em MB |
 | `CORS_ORIGINS` | `http://localhost:5173` | Origens permitidas, separadas por vírgula |
+| `WATCH_ROOT` | `/watch` | Pasta cujos arquivos podem ser observados em tempo real (fora do Docker, aponte para uma pasta local) |
+| `WATCH_SCHEDULER` | `true` | Liga o agendador que lê os arquivos observados (os testes desligam) |
+| `GTLOG_WATCH_DIR` | `./samples` | Pasta do host montada em `/watch` pelo Compose |
 | `VITE_API_URL` | `http://localhost:8000` | URL da API usada pelo frontend (no build) |
 | `TEST_DATABASE_URL` | `postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog_test` | Banco dos testes do backend |
 

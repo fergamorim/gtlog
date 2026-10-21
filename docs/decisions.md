@@ -97,6 +97,22 @@ Registro curto no estilo ADR. Cada entrada tem contexto, decisão, alternativas 
 - **Consequências**: a rolagem continua fluida independentemente do número de linhas carregadas. Mensagens
   longas são truncadas na linha, e o texto completo e a linha original ficam no painel de detalhe.
 
+## 9. Observação de arquivos por polling, com a thread na própria API
+
+- **Contexto**: o usuário quer acompanhar um log que cresce, lido de tempos em tempos em um intervalo que ele escolhe.
+  A API roda em container e o arquivo está no computador do usuário.
+- **Decisão**: o Compose monta uma pasta do host só para leitura em `/watch`. Uma thread na API lê, a cada
+  intervalo, o que foi acrescentado desde o último `offset` guardado no banco. Só arquivos dentro de `WATCH_ROOT`
+  são aceitos, conferido de novo a cada leitura.
+- **Alternativas**: inotify/watchdog (eventos em vez de polling, mas não funcionam de forma confiável em volumes
+  montados do macOS no Docker Desktop, e o usuário pediu explicitamente um intervalo); um agente no host que envie
+  as linhas por HTTP (funciona com qualquer caminho, mas é mais um programa para instalar); upload repetido do
+  arquivo inteiro pelo navegador (reimporta tudo e duplica linhas).
+- **Consequências**: nada a instalar além do Compose, e o estado da leitura sobrevive a restarts da API (ela
+  continua do `offset`). O usuário escolhe a pasta montada antes de subir; arquivos fora dela não podem ser
+  observados, o que também impede usar a API para ler arquivos do servidor. Com vários workers, o
+  `FOR UPDATE SKIP LOCKED` evita leituras duplicadas.
+
 ## Limitações conhecidas
 
 - **Tamanho do upload verificado depois do recebimento**: o Starlette recebe o corpo multipart inteiro antes de
@@ -112,3 +128,6 @@ Registro curto no estilo ADR. Cada entrada tem contexto, decisão, alternativas 
 - **Ano no syslog RFC 3164**: o formato não tem ano nem fuso; a linha é lida como UTC no ano corrente (ou no
   anterior, se ficaria mais de um dia no futuro).
 - **Sem autenticação**: qualquer cliente que alcance a API pode importar e consultar. Fora do escopo do desafio.
+- **Observação em tempo real**: linhas escritas no arquivo antigo depois da última leitura e antes de uma rotação
+  se perdem (a leitura passa para o arquivo novo). Uma última linha que nunca recebe quebra de linha não é
+  importada. Arquivos comprimidos na rotação (`.gz`) não são lidos.

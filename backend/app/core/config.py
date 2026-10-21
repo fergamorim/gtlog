@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://gtlog:gtlog@localhost:5432/gtlog"
     upload_max_mb: int = 1024
     cors_origins: str = "http://localhost:5173"
+    # Folder whose files can be watched; in Docker it is a host folder mounted read-only.
+    watch_root: str = "/watch"
+    # Off in tests, which run polls by hand instead of through the background scheduler.
+    watch_scheduler: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

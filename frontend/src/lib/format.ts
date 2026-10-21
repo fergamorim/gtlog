@@ -57,6 +57,15 @@ export function formatDuration(ms: number): string {
   return `${s} s`
 }
 
+/** Polling interval: "30 s", "5 min", "1 min e 30 s", "2 h". */
+export function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`
+  if (seconds % 3600 === 0) return `${seconds / 3600} h`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return rest ? `${minutes} min e ${rest} s` : `${minutes} min`
+}
+
 /** "há 5 minutos", "ontem". */
 export function formatRelative(value: string, now = Date.now()): string {
   const diff = (toDate(value).getTime() - now) / 1000

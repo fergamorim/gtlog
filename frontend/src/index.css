@@ -466,6 +466,21 @@ code, pre, .mono { font-family: var(--font-mono); }
 .import-item__error { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--danger); }
 .import-item__links { grid-column: 1 / -1; display: flex; gap: var(--space-3); font-size: var(--text-sm); }
 
+.imports-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.watch-intro { margin-bottom: var(--space-3); }
+.watch-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.watch-form__interval { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
+.watch-form code { font-size: 0.95em; }
+.checkbox { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.checkbox input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.watch-list { margin-top: var(--space-3); }
+.watch-list .import-item { padding-left: 0; padding-right: 0; }
+.watch-list .import-item__links { align-items: center; flex-wrap: wrap; }
+.watch-list__hint { margin-top: var(--space-2); }
+.status-badge--PAUSED { background: var(--surface-2); color: var(--muted); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
 /* ============================== Dashboard ================================= */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
 .kpi { padding: var(--space-4); display: flex; flex-direction: column; gap: 2px; }

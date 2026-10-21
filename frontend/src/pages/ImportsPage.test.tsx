@@ -8,7 +8,7 @@ import { ImportsPage } from './ImportsPage'
 function uploadApi(response: () => Response) {
   return mockFetch((url, init) => {
     if (url.pathname === '/imports' && init?.method === 'POST') return response()
-    if (url.pathname === '/imports') return json([])
+    if (url.pathname === '/imports' || url.pathname === '/watches') return json([])
     return json({ detail: 'não encontrado' }, 404)
   })
 }
@@ -73,6 +73,7 @@ describe('ImportsPage upload', () => {
     mockFetch((url, init) => {
       if (url.pathname === '/imports' && init?.method === 'POST') return json({ ...job, status: 'PENDING' }, 202)
       if (url.pathname === '/imports/9') return json(job)
+      if (url.pathname === '/watches') return json([])
       return json([job])
     })
     renderWithProviders(<ImportsPage />)
